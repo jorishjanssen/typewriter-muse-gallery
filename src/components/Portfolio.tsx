@@ -65,9 +65,18 @@ export const Portfolio = () => {
           {/* Image Section */}
           <div className="relative order-2 lg:order-1">
             <div 
-              className={`relative overflow-hidden rounded-sm shadow-2xl transition-all duration-300 ${
+              className={`relative overflow-hidden rounded-sm shadow-2xl transition-all duration-300 border-4 border-vintage-shadow/30 ${
                 isTransitioning ? 'opacity-50 scale-95' : 'opacity-100 scale-100'
               }`}
+              style={{
+                boxShadow: `
+                  0 0 0 1px hsl(var(--vintage-shadow) / 0.2),
+                  0 0 0 3px hsl(var(--vintage-paper)),
+                  0 0 0 7px hsl(var(--vintage-shadow) / 0.15),
+                  0 0 0 8px hsl(var(--vintage-shadow) / 0.1),
+                  0 10px 30px -10px hsl(var(--vintage-shadow) / 0.4)
+                `
+              }}
             >
               <img
                 src={currentItem.image}
