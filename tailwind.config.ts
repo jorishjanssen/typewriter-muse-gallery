@@ -18,6 +18,10 @@ export default {
 			}
 		},
 		extend: {
+			fontFamily: {
+				'typewriter': ['Courier Prime', 'Courier New', 'monospace'],
+				'serif': ['Playfair Display', 'serif'],
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
@@ -51,6 +55,12 @@ export default {
 				card: {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
+				},
+				vintage: {
+					paper: 'hsl(var(--vintage-paper))',
+					ink: 'hsl(var(--vintage-ink))',
+					sepia: 'hsl(var(--vintage-sepia))',
+					shadow: 'hsl(var(--vintage-shadow))',
 				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
