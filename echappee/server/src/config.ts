@@ -45,6 +45,9 @@ export const config = {
     maxItemsPerSourcePerRun: Number(process.env.SCRAPE_MAX_ITEMS ?? 25),
     // Per-page fetch timeout for article extraction.
     fetchTimeoutMs: Number(process.env.SCRAPE_FETCH_TIMEOUT_MS ?? 25_000),
+    // Posts with less extracted text than this are not articles (video-only
+    // posts, podcasts, paywalled teasers) and are not ingested.
+    minFullTextChars: Number(process.env.SCRAPE_MIN_FULLTEXT ?? 200),
   },
 };
 

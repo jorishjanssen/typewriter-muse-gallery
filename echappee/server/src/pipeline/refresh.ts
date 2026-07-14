@@ -8,9 +8,15 @@ import { extractArticle, htmlToText, sanitizeFragment, type Extracted } from './
 import { fetchFeed, userAgentFor, type FeedItem } from './fetchFeeds.js';
 
 export interface RefreshStats {
-  sources: { key: string; ok: boolean; newArticles: number; error?: string }[];
+  sources: { key: string; ok: boolean; newArticles: number; skipped: number; error?: string }[];
   totalNew: number;
   repaired: number;
+  removed: number;
+}
+
+/** True when extracted content is a real article rather than a video/podcast/teaser post. */
+export function hasSubstantialText(extracted: Extracted): boolean {
+  return (extracted.contentText?.length ?? 0) >= config.scrape.minFullTextChars;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -25,20 +31,25 @@ export async function refreshAll(
     onSource?: (entry: RefreshStats['sources'][number]) => void;
   } = {}
 ): Promise<RefreshStats> {
-  if (running) return { sources: [], totalNew: 0, repaired: 0 };
+  if (running) return { sources: [], totalNew: 0, repaired: 0, removed: 0 };
   running = true;
   try {
-    const stats: RefreshStats = { sources: [], totalNew: 0, repaired: 0 };
+    const stats: RefreshStats = { sources: [], totalNew: 0, repaired: 0, removed: 0 };
     for (const source of SOURCES.filter((s) => s.enabled)) {
       const entry = await refreshSource(db, source, opts);
       stats.sources.push(entry);
       stats.totalNew += entry.newArticles;
       opts.onSource?.(entry);
     }
-    // Real pipeline runs also retry extraction for recent articles that came
-    // through thin (consent walls, transient blocks). Skipped when a fake
-    // extractor is injected (tests/seed).
-    if (!opts.extract) stats.repaired = await repairThinArticles(db);
+    // Real pipeline runs also retry extraction for stored articles that are
+    // thin, repairing transient failures and removing posts that turn out to
+    // have no article body at all (video/podcast/teaser posts). Skipped when
+    // a fake extractor is injected (tests/seed).
+    if (!opts.extract) {
+      const cleanup = await repairOrRemoveThinArticles(db);
+      stats.repaired = cleanup.repaired;
+      stats.removed = cleanup.removed;
+    }
     return stats;
   } finally {
     running = false;
@@ -46,23 +57,28 @@ export async function refreshAll(
 }
 
 /**
- * Re-attempt full-text extraction for recent articles whose stored text is
- * missing or too short to be a real article. Bounded per run so it heals
- * gradually without slowing the scrape.
+ * Re-attempt full-text extraction for stored articles whose text is missing
+ * or too short to be a real article. Successful retries are saved; posts
+ * that still have no substantial text are deleted — they are video/podcast
+ * or teaser posts, not articles. (If such a post is still in its source's
+ * feed, ingest re-evaluates it next run and skips it there.)
  */
-async function repairThinArticles(db: Db, limit = 10): Promise<number> {
-  const cutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
+async function repairOrRemoveThinArticles(
+  db: Db,
+  limit = 10
+): Promise<{ repaired: number; removed: number }> {
   const thin = await db.query<{ id: number; url: string; source_key: string }>(
     `SELECT id, url, source_key FROM articles
-     WHERE (content_text IS NULL OR LENGTH(content_text) < 200) AND fetched_at >= $1
+     WHERE content_text IS NULL OR LENGTH(content_text) < $1
      ORDER BY id DESC LIMIT $2`,
-    [cutoff, limit]
+    [config.scrape.minFullTextChars, limit]
   );
   let repaired = 0;
+  let removed = 0;
   for (const row of thin) {
     const source = SOURCES.find((s) => s.key === row.source_key);
     const extracted = await extractArticle(row.url, source ? userAgentFor(source) : undefined);
-    if ((extracted.contentText?.length ?? 0) >= 200) {
+    if (hasSubstantialText(extracted)) {
       await db.query(
         `UPDATE articles SET content_html = $1, content_text = $2,
            image_url = COALESCE(image_url, $3)
@@ -70,10 +86,13 @@ async function repairThinArticles(db: Db, limit = 10): Promise<number> {
         [extracted.contentHtml, extracted.contentText, extracted.imageUrl, row.id]
       );
       repaired++;
+    } else {
+      await db.query('DELETE FROM articles WHERE id = $1', [row.id]);
+      removed++;
     }
     await sleep(config.scrape.perHostDelayMs);
   }
-  return repaired;
+  return { repaired, removed };
 }
 
 async function refreshSource(
@@ -96,10 +115,11 @@ async function refreshSource(
       message,
       source.key,
     ]);
-    return { key: source.key, ok: false, newArticles: 0, error: message };
+    return { key: source.key, ok: false, newArticles: 0, skipped: 0, error: message };
   }
 
   let inserted = 0;
+  let skipped = 0;
   for (const item of items) {
     const exists = await db.query('SELECT 1 FROM articles WHERE source_key = $1 AND guid = $2', [
       source.key,
@@ -109,7 +129,16 @@ async function refreshSource(
     const extracted = opts.extract
       ? await opts.extract(item.url)
       : await extractArticle(item.url, userAgentFor(source));
-    await ingestArticle(db, source, item, bestContent(extracted, item));
+    const content = bestContent(extracted, item);
+    // Posts without a real article body (video-only, podcasts, paywalled
+    // teasers) are not ingested. Not persisting them also means a transient
+    // extraction failure gets retried on the next run. Only enforced in real
+    // pipeline runs — tests/seed inject their own extractor.
+    if (!opts.extract && !hasSubstantialText(content)) {
+      skipped++;
+      continue;
+    }
+    await ingestArticle(db, source, item, content);
     inserted++;
     if (!opts.extract) await sleep(config.scrape.perHostDelayMs);
   }
@@ -121,7 +150,7 @@ async function refreshSource(
     [nowIso(), source.key]
   );
 
-  return { key: source.key, ok: true, newArticles: inserted };
+  return { key: source.key, ok: true, newArticles: inserted, skipped };
 }
 
 /**
