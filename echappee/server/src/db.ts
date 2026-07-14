@@ -130,9 +130,16 @@ let singleton: Promise<Db> | null = null;
 
 export function getDb(): Promise<Db> {
   if (!singleton) {
-    singleton = config.databaseUrl
-      ? PostgresDb.create(config.databaseUrl)
-      : PgliteDb.create(config.dataDir);
+    singleton = (
+      config.databaseUrl
+        ? PostgresDb.create(config.databaseUrl)
+        : PgliteDb.create(config.dataDir)
+    ).catch((err) => {
+      // Don't pin a transient failure (e.g. a sleeping Neon instance timing
+      // out on first connect) — let the next caller retry from scratch.
+      singleton = null;
+      throw err;
+    });
   }
   return singleton;
 }
