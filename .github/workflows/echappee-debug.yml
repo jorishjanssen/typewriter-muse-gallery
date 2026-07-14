@@ -40,6 +40,24 @@ jobs:
             echo
           done
 
+      - name: Probe feeds for premium/video markers
+        run: |
+          node --input-type=module -e "
+          import Parser from 'rss-parser';
+          const parser = new Parser({ timeout: 20000, customFields: { item: [['content:encoded','enc']] } });
+          for (const url of ['https://www.wielerflits.nl/feed/', 'https://sporza.be/nl/categorie/wielrennen.rss.xml']) {
+            console.log('=== FEED', url);
+            try {
+              const feed = await parser.parseURL(url);
+              for (const i of (feed.items ?? []).slice(0, 20)) {
+                const cats = (i.categories ?? []).map(c => typeof c === 'string' ? c : (c?._ ?? JSON.stringify(c))).join('|');
+                console.log(JSON.stringify({ t: i.title?.slice(0, 55), link: i.link, cats, encLen: (i.enc ?? '').length }));
+              }
+            } catch (e) { console.log('feed error:', e.message); }
+          }
+          process.exit(0);
+          "
+
       - name: Inspect database
         env:
           DATABASE_URL: ${{ secrets.ECHAPPEE_DATABASE_URL }}
@@ -54,6 +72,7 @@ jobs:
           console.log('id column:', await sql.unsafe(\"SELECT column_name, data_type FROM information_schema.columns WHERE table_name='articles' AND column_name='id'\"));
           console.log('by id (param):', await sql.unsafe('SELECT id, title FROM articles WHERE id = \$1', [id]));
           console.log('content health:', await sql.unsafe(\"SELECT source_key, COUNT(*)::int AS total, SUM(CASE WHEN content_text IS NULL OR LENGTH(content_text) < 200 THEN 1 ELSE 0 END)::int AS thin FROM articles GROUP BY source_key ORDER BY source_key\"));
+          console.log('thin articles:', await sql.unsafe(\"SELECT id, source_key, url, LEFT(title, 70) AS title, COALESCE(LENGTH(content_text),0)::int AS len FROM articles WHERE content_text IS NULL OR LENGTH(content_text) < 200 ORDER BY id DESC LIMIT 15\"));
           await sql.end({ timeout: 5 });
           process.exit(0);
           "
