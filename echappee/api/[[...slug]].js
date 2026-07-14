@@ -8,11 +8,24 @@ import { registerApi } from '../server/dist/routes/api.js';
 const app = Fastify({ logger: false });
 
 const ready = (async () => {
+  if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+    throw new Error(
+      'DATABASE_URL is not set. Connect a Postgres database (Vercel → Storage → Neon) to this project and redeploy.'
+    );
+  }
   registerApi(app, await getDb());
   await app.ready();
 })();
 
 export default async function handler(req, res) {
-  await ready;
+  try {
+    await ready;
+  } catch (err) {
+    // Surface the real problem instead of a generic function crash.
+    res.statusCode = 500;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+    return;
+  }
   app.server.emit('request', req, res);
 }
