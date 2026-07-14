@@ -53,6 +53,7 @@ jobs:
           console.log('first ids:', await sql.unsafe('SELECT id FROM articles ORDER BY id LIMIT 5'));
           console.log('id column:', await sql.unsafe(\"SELECT column_name, data_type FROM information_schema.columns WHERE table_name='articles' AND column_name='id'\"));
           console.log('by id (param):', await sql.unsafe('SELECT id, title FROM articles WHERE id = \$1', [id]));
+          console.log('content health:', await sql.unsafe(\"SELECT source_key, COUNT(*)::int AS total, SUM(CASE WHEN content_text IS NULL OR LENGTH(content_text) < 200 THEN 1 ELSE 0 END)::int AS thin FROM articles GROUP BY source_key ORDER BY source_key\"));
           await sql.end({ timeout: 5 });
           process.exit(0);
           "

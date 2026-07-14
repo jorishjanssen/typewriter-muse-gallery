@@ -12,7 +12,7 @@ const stats = await refreshAll(db, {
     console.log(s.ok ? `✔ ${s.key}: ${s.newArticles} new` : `✘ ${s.key}: ${s.error ?? 'failed'}`),
 });
 const failures = stats.sources.filter((s) => !s.ok).length;
-console.log(`Total new articles: ${stats.totalNew}`);
+console.log(`Total new articles: ${stats.totalNew}; repaired thin extractions: ${stats.repaired}`);
 await db.close();
 // Exit explicitly: lingering sockets/handles otherwise keep Node alive and a
 // CI job hangs until its timeout. Non-zero only when every source failed.

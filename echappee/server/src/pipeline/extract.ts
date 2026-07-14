@@ -36,6 +36,20 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
+/**
+ * Light sanitation for publisher-supplied HTML fragments (feed content):
+ * strip scripts/styles, inline event handlers and javascript: links before
+ * the fragment is rendered in the reader.
+ */
+export function sanitizeFragment(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
+}
+
 /** Reader-mode extraction from an HTML string (fetched page or fixture). */
 export async function extractArticleFromHtml(html: string, url: string): Promise<Extracted> {
   try {
