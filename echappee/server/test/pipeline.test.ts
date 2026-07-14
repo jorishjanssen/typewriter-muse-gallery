@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryDb } from '../src/db.js';
 import { categorizeByKeywords } from '../src/pipeline/categorize.js';
 import { createCluster, matchClusterByTitle, recentClusters } from '../src/pipeline/cluster.js';
-import { htmlToText } from '../src/pipeline/extract.js';
-import { ingestArticle } from '../src/pipeline/refresh.js';
+import { htmlToText, sanitizeFragment } from '../src/pipeline/extract.js';
+import { bestContent, ingestArticle } from '../src/pipeline/refresh.js';
 import { parseEnrichment } from '../src/llm.js';
 import { getSource } from '../src/sources.js';
 
@@ -52,6 +52,44 @@ describe('htmlToText', () => {
     expect(text).toContain('Hello world');
     expect(text).toContain('Bye & thanks');
     expect(text).not.toContain('x()');
+  });
+});
+
+describe('bestContent', () => {
+  const item = (contentHtml: string | null) => ({
+    guid: 'g', url: 'https://example.com', title: 'T', author: null,
+    publishedAt: new Date().toISOString(), excerpt: null, imageUrl: null, contentHtml,
+  });
+  const thinPage = { contentHtml: null, contentText: null, imageUrl: 'img', author: 'A' };
+
+  it('falls back to feed content when page extraction is thin', () => {
+    const feedHtml = '<p>' + 'volwaardige alinea tekst '.repeat(20) + '</p>';
+    const result = bestContent(thinPage, item(feedHtml));
+    expect(result.contentText).toContain('volwaardige alinea');
+    expect(result.imageUrl).toBe('img');
+  });
+
+  it('keeps page extraction when it is at least as rich', () => {
+    const richPage = { contentHtml: '<p>x</p>', contentText: 'x'.repeat(5000), imageUrl: null, author: null };
+    expect(bestContent(richPage, item('<p>short teaser</p>'))).toBe(richPage);
+    expect(bestContent(thinPage, item(null))).toBe(thinPage);
+  });
+
+  it('sanitizes feed HTML', () => {
+    const feedHtml =
+      '<p onclick="evil()">' + 'echte inhoud van het artikel '.repeat(20) + '</p><script>evil()</script>';
+    const result = bestContent(thinPage, item(feedHtml));
+    expect(result.contentHtml).not.toContain('<script>');
+    expect(result.contentHtml).not.toContain('onclick');
+  });
+});
+
+describe('sanitizeFragment', () => {
+  it('strips scripts, handlers and javascript links', () => {
+    const out = sanitizeFragment(
+      '<p onmouseover=hack() >hi</p><a href="javascript:bad()">x</a><script>b()</script><style>.x{}</style>'
+    );
+    expect(out).toBe('<p >hi</p><a href="#">x</a>');
   });
 });
 

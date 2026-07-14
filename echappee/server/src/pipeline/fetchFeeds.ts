@@ -11,6 +11,8 @@ export interface FeedItem {
   publishedAt: string;
   excerpt: string | null;
   imageUrl: string | null;
+  /** Full article HTML when the feed ships it (WordPress content:encoded). */
+  contentHtml?: string | null;
 }
 
 export const BROWSER_UA =
@@ -28,6 +30,7 @@ function makeParser(userAgent: string): Parser {
       item: [
         ['media:content', 'mediaContent', { keepArray: true }],
         ['media:thumbnail', 'mediaThumbnail'],
+        ['content:encoded', 'contentEncoded'],
       ],
     },
   });
@@ -48,6 +51,7 @@ function toItem(raw: Parser.Item & Record<string, unknown>): FeedItem | null {
   const title = raw.title?.trim();
   if (!url || !title) return null;
   const published = raw.isoDate ?? (raw.pubDate ? new Date(raw.pubDate).toISOString() : null);
+  const encoded = (raw.contentEncoded as string | undefined)?.trim();
   return {
     guid: (raw.guid as string | undefined)?.trim() || url,
     url,
@@ -56,6 +60,8 @@ function toItem(raw: Parser.Item & Record<string, unknown>): FeedItem | null {
     publishedAt: published ?? new Date().toISOString(),
     excerpt: raw.contentSnippet?.trim().slice(0, 500) || null,
     imageUrl: itemImage(raw),
+    // Only keep feed HTML that plausibly is a full article, not a teaser.
+    contentHtml: encoded && encoded.length > 300 ? encoded : null,
   };
 }
 
