@@ -49,14 +49,22 @@ production); without it, it runs an embedded Postgres (PGlite) persisted to
 
 ## LLM configuration
 
-Any OpenAI-compatible provider works; DeepSeek is the default. Set in `.env`
-(or the environment):
+Preferred: **Vercel AI Gateway** — one key for every model, switch providers
+by changing a model slug, billing consolidated in Vercel.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `LLM_API_KEY` | *(empty)* | Empty = AI disabled; app stays fully usable |
-| `LLM_BASE_URL` | `https://api.deepseek.com` | e.g. `https://api.openai.com/v1` |
-| `LLM_MODEL` | `deepseek-chat` | any chat-completions model id |
+| `AI_GATEWAY_API_KEY` | *(empty)* | Create under the AI tab in the Vercel dashboard |
+| `LLM_MODEL` | `deepseek/deepseek-v3.1` | any gateway slug, e.g. `anthropic/claude-haiku-4.5` |
+
+In production the scraper reads these from the `ECHAPPEE_AI_GATEWAY_API_KEY`
+repo secret and the optional `ECHAPPEE_LLM_MODEL` repo variable — so you can
+switch models from the GitHub UI without touching code.
+
+Alternatively, any OpenAI-compatible provider works directly (takes
+precedence when set): `LLM_API_KEY` + `LLM_BASE_URL` (default
+`https://api.deepseek.com`) + `LLM_MODEL` (default `deepseek-chat`).
+No key at all = AI disabled; the app stays fully usable.
 
 With a key, each new article gets a 2-sentence summary (in its own
 language), a category, and is clustered with other coverage of the same

@@ -4,8 +4,13 @@ name: Échappée scraper
 # database (Neon) that the Vercel deployment reads from.
 #
 # Required repository secrets:
-#   ECHAPPEE_DATABASE_URL  — Postgres connection string (from Neon/Vercel)
-#   ECHAPPEE_LLM_API_KEY   — optional; enables AI summaries/clustering
+#   ECHAPPEE_DATABASE_URL        — Postgres connection string (from Neon/Vercel)
+#   ECHAPPEE_AI_GATEWAY_API_KEY  — optional; Vercel AI Gateway key, enables AI
+#                                  summaries/clustering (one key, any model)
+#   ECHAPPEE_LLM_API_KEY         — optional alternative: a direct provider key
+# Optional repository variable:
+#   ECHAPPEE_LLM_MODEL           — gateway model slug, e.g. deepseek/deepseek-v3.1
+#                                  or anthropic/claude-haiku-4.5 (switch any time)
 #
 # Note: scheduled workflows only run from the repository's default branch.
 
@@ -48,7 +53,9 @@ jobs:
       - name: Scrape all sources
         env:
           DATABASE_URL: ${{ secrets.ECHAPPEE_DATABASE_URL }}
+          AI_GATEWAY_API_KEY: ${{ secrets.ECHAPPEE_AI_GATEWAY_API_KEY }}
           LLM_API_KEY: ${{ secrets.ECHAPPEE_LLM_API_KEY }}
+          LLM_MODEL: ${{ vars.ECHAPPEE_LLM_MODEL }}
           # CI runs on a 30-min cadence with a 25-min cap: keep runs snappy.
           # Progress persists per article, so a capped run just continues next time.
           SCRAPE_PER_HOST_DELAY_MS: '250'
