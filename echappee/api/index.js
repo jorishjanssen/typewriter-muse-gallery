@@ -28,6 +28,18 @@ function init() {
   return initPromise;
 }
 
+// All /api/* traffic is rewritten here (vercel.json) with the original
+// sub-path carried in ?__path=, because Vercel's plain api/ directory does
+// not support catch-all filenames. Rebuild the real URL for Fastify routing.
+function normalizeUrl(rawUrl) {
+  const u = new URL(rawUrl, 'http://internal');
+  const path = u.searchParams.get('__path');
+  if (path === null) return rawUrl;
+  u.searchParams.delete('__path');
+  const qs = u.searchParams.toString();
+  return `/api/${path}${qs ? `?${qs}` : ''}`;
+}
+
 export default async function handler(req, res) {
   try {
     await init();
@@ -37,5 +49,6 @@ export default async function handler(req, res) {
     res.end(JSON.stringify({ error: String(err?.stack ?? err) }));
     return;
   }
+  req.url = normalizeUrl(req.url);
   app.server.emit('request', req, res);
 }
