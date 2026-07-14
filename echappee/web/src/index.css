@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper text-ink antialiased;
+  }
+  @media (prefers-color-scheme: dark) {
+    body {
+      @apply bg-night text-snow;
+    }
+  }
+}
+
+/* Reader-mode article body — extracted HTML we don't control, styled here. */
+.article-body {
+  @apply font-serif text-[1.075rem] leading-relaxed;
+}
+.article-body p,
+.article-body ul,
+.article-body ol,
+.article-body blockquote {
+  @apply my-4;
+}
+.article-body h2,
+.article-body h3 {
+  @apply mt-8 mb-3 font-sans font-semibold text-lg;
+}
+.article-body a {
+  @apply text-accent underline underline-offset-2;
+}
+.article-body img,
+.article-body video,
+.article-body iframe {
+  @apply my-5 w-full rounded-xl h-auto;
+}
+.article-body figcaption {
+  @apply text-sm opacity-60 -mt-3 mb-5 font-sans;
+}
+.article-body blockquote {
+  @apply border-l-4 border-accent/50 pl-4 italic opacity-90;
+}
+.article-body ul {
+  @apply list-disc pl-6;
+}
+.article-body ol {
+  @apply list-decimal pl-6;
+}

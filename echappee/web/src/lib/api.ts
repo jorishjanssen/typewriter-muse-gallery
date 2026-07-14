@@ -1,0 +1,113 @@
+export type Category = 'racing' | 'transfers' | 'gear' | 'offroad' | 'other';
+
+export interface ArticleCard {
+  id: number;
+  sourceKey: string;
+  sourceName: string;
+  url: string;
+  title: string;
+  author: string | null;
+  publishedAt: string;
+  excerpt: string | null;
+  imageUrl: string | null;
+  lang: string;
+  category: Category;
+  summary: string | null;
+  hasFullText: boolean;
+  read: boolean;
+}
+
+export interface FeedCard {
+  clusterId: number;
+  article: ArticleCard;
+  alternates: ArticleCard[];
+  read: boolean;
+}
+
+export interface FeedPage {
+  cards: FeedCard[];
+  nextBefore: string | null;
+}
+
+export interface FullArticle extends ArticleCard {
+  contentHtml: string | null;
+  alternates: ArticleCard[];
+}
+
+export interface Mute {
+  id: number;
+  kind: 'term' | 'source' | 'category';
+  value: string;
+}
+
+export interface SourceHealth {
+  key: string;
+  name: string;
+  homepage: string;
+  lang: string;
+  enabled: boolean;
+  feedUrl: string;
+  lastRunAt: string | null;
+  lastOkAt: string | null;
+  lastError: string | null;
+  articlesTotal: number;
+}
+
+export interface Status {
+  articles: number;
+  unread: number;
+  llm: { enabled: boolean; model: string; baseUrl: string };
+  scrapeIntervalMinutes: number;
+}
+
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    // Fastify 400s on an empty body with a JSON content type, so only
+    // declare JSON when we actually send one.
+    ...(init?.body ? { headers: { 'Content-Type': 'application/json' } } : {}),
+    ...init,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  feed: (opts: { category?: Category; unread?: boolean; before?: string }) => {
+    const params = new URLSearchParams();
+    if (opts.category) params.set('category', opts.category);
+    if (opts.unread) params.set('unread', '1');
+    if (opts.before) params.set('before', opts.before);
+    return request<FeedPage>(`/api/feed?${params}`);
+  },
+  article: (id: number | string) => request<FullArticle>(`/api/articles/${id}`),
+  markRead: (id: number) => request(`/api/articles/${id}/read`, { method: 'POST' }),
+  markUnread: (id: number) => request(`/api/articles/${id}/unread`, { method: 'POST' }),
+  readAll: () => request('/api/read-all', { method: 'POST' }),
+  mutes: () => request<Mute[]>('/api/mutes'),
+  addMute: (kind: Mute['kind'], value: string) =>
+    request<Mute[]>('/api/mutes', { method: 'POST', body: JSON.stringify({ kind, value }) }),
+  removeMute: (id: number) => request<Mute[]>(`/api/mutes/${id}`, { method: 'DELETE' }),
+  sources: () => request<SourceHealth[]>('/api/sources'),
+  status: () => request<Status>('/api/status'),
+  refresh: () => request('/api/refresh', { method: 'POST' }),
+};
+
+export function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(iso).toLocaleDateString();
+}
+
+export const CATEGORY_LABELS: Record<Category, string> = {
+  racing: 'Racing',
+  transfers: 'Transfers',
+  gear: 'Gear',
+  offroad: 'Off-road',
+  other: 'Other',
+};
