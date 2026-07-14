@@ -5,7 +5,7 @@ import { enrichArticle } from '../llm.js';
 import { categorizeByKeywords } from './categorize.js';
 import { createCluster, matchClusterByTitle, recentClusters, touchCluster } from './cluster.js';
 import { extractArticle, type Extracted } from './extract.js';
-import { fetchFeed, type FeedItem } from './fetchFeeds.js';
+import { fetchFeed, userAgentFor, type FeedItem } from './fetchFeeds.js';
 
 export interface RefreshStats {
   sources: { key: string; ok: boolean; newArticles: number; error?: string }[];
@@ -19,7 +19,10 @@ let running = false;
 /** Full pipeline run over all enabled sources. Serialized: overlapping calls no-op. */
 export async function refreshAll(
   db: Db,
-  opts: { extract?: (url: string) => Promise<Extracted> } = {}
+  opts: {
+    extract?: (url: string) => Promise<Extracted>;
+    onSource?: (entry: RefreshStats['sources'][number]) => void;
+  } = {}
 ): Promise<RefreshStats> {
   if (running) return { sources: [], totalNew: 0 };
   running = true;
@@ -29,6 +32,7 @@ export async function refreshAll(
       const entry = await refreshSource(db, source, opts);
       stats.sources.push(entry);
       stats.totalNew += entry.newArticles;
+      opts.onSource?.(entry);
     }
     return stats;
   } finally {
@@ -66,7 +70,9 @@ async function refreshSource(
       item.guid,
     ]);
     if (exists.length > 0) continue;
-    const extracted = await (opts.extract ?? extractArticle)(item.url);
+    const extracted = opts.extract
+      ? await opts.extract(item.url)
+      : await extractArticle(item.url, userAgentFor(source));
     await ingestArticle(db, source, item, extracted);
     inserted++;
     if (!opts.extract) await sleep(config.scrape.perHostDelayMs);

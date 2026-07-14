@@ -91,7 +91,8 @@ class PostgresDb implements Db {
   }
 
   async close(): Promise<void> {
-    await this.sql.end();
+    // Bounded shutdown — a stuck connection must not keep the process alive.
+    await this.sql.end({ timeout: 5 });
   }
 }
 

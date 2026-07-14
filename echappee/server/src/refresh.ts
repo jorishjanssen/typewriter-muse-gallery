@@ -6,15 +6,14 @@ import { getDb } from './db.js';
 import { refreshAll } from './pipeline/refresh.js';
 
 const db = await getDb();
-const stats = await refreshAll(db);
-let failures = 0;
-for (const s of stats.sources) {
-  if (!s.ok) failures++;
-  console.log(
-    s.ok ? `✔ ${s.key}: ${s.newArticles} new` : `✘ ${s.key}: ${s.error ?? 'failed'}`
-  );
-}
+// Log per source as it completes, so a killed run still leaves useful logs.
+const stats = await refreshAll(db, {
+  onSource: (s) =>
+    console.log(s.ok ? `✔ ${s.key}: ${s.newArticles} new` : `✘ ${s.key}: ${s.error ?? 'failed'}`),
+});
+const failures = stats.sources.filter((s) => !s.ok).length;
 console.log(`Total new articles: ${stats.totalNew}`);
 await db.close();
-// Fail CI only when every source failed (one flaky feed shouldn't page anyone).
-if (failures > 0 && failures === stats.sources.length) process.exit(1);
+// Exit explicitly: lingering sockets/handles otherwise keep Node alive and a
+// CI job hangs until its timeout. Non-zero only when every source failed.
+process.exit(failures > 0 && failures === stats.sources.length ? 1 : 0);
