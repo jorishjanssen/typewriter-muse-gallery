@@ -1,4 +1,6 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
@@ -7,15 +9,31 @@ import Feed from './pages/Feed';
 import Reader from './pages/Reader';
 import Settings from './pages/Settings';
 
+const DAY = 24 * 60 * 60 * 1000;
+
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 60_000, retry: 1 },
+    queries: {
+      staleTime: 60_000,
+      retry: 1,
+      // Keep cached data long enough to survive app restarts (persisted below),
+      // so reopening the PWA paints the last feed instantly while refetching.
+      gcTime: DAY,
+    },
   },
+});
+
+const persister = createSyncStoragePersister({
+  storage: window.localStorage,
+  key: 'echappee-cache',
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{ persister, maxAge: DAY, buster: 'v1' }}
+    >
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Feed />} />
@@ -23,6 +41,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </BrowserRouter>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   </React.StrictMode>
 );

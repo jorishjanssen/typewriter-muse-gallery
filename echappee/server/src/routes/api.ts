@@ -12,7 +12,8 @@ interface ArticleRow {
   author: string | null;
   published_at: string;
   excerpt: string | null;
-  content_text: string | null;
+  /** Byte length of the extracted text — fetched instead of the text itself. */
+  content_len: number | null;
   image_url: string | null;
   lang: string;
   category: string;
@@ -45,12 +46,15 @@ function articleCard(row: ArticleRow) {
     lang: row.lang,
     category: row.category,
     summary: row.summary,
-    hasFullText: row.content_text !== null && row.content_text.length > 200,
+    hasFullText: (row.content_len ?? 0) > 200,
     read: row.read_at !== null,
   };
 }
 
-const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt, content_text,
+// Deliberately NOT content_text: the feed only needs its length, and pulling
+// full article bodies for 100+ rows per request dominated response time.
+const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt,
+                LENGTH(content_text) AS content_len,
                 image_url, lang, category, summary, cluster_id, read_at`;
 
 export function registerApi(app: FastifyInstance, db: Db): void {
@@ -107,8 +111,8 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       if (cards.length >= limit) break;
       // Best article: full text wins, then longest text, then newest.
       const best = [...group].sort((a, b) => {
-        const lenA = a.content_text?.length ?? 0;
-        const lenB = b.content_text?.length ?? 0;
+        const lenA = a.content_len ?? 0;
+        const lenB = b.content_len ?? 0;
         return lenB - lenA || b.published_at.localeCompare(a.published_at);
       })[0];
       cards.push({
