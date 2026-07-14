@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { SkeletonArticle } from '../components/Skeleton';
 import TopBar, { IconButton } from '../components/TopBar';
 import { api, CATEGORY_LABELS, timeAgo } from '../lib/api';
 
@@ -43,7 +44,7 @@ export default function Reader() {
         }
       />
       <div className="mx-auto max-w-2xl px-4">
-        {article.isLoading && <p className="py-12 text-center opacity-60">Loading…</p>}
+        {article.isLoading && <SkeletonArticle />}
         {article.isError && <p className="py-12 text-center opacity-60">Article not found.</p>}
         {a && (
           <article className="py-6">

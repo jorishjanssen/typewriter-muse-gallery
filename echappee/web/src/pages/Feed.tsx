@@ -1,5 +1,6 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { SkeletonFeed } from '../components/Skeleton';
 import StoryCard from '../components/StoryCard';
 import TopBar, { IconButton } from '../components/TopBar';
 import { api, CATEGORY_LABELS, type Category } from '../lib/api';
@@ -23,6 +24,9 @@ export default function Feed() {
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextBefore ?? undefined,
+    // Keep showing the previous list while a filter change fetches, instead
+    // of blanking the feed.
+    placeholderData: keepPreviousData,
   });
 
   const cards = feed.data?.pages.flatMap((p) => p.cards) ?? [];
@@ -83,7 +87,7 @@ export default function Feed() {
           </button>
         </div>
 
-        {feed.isLoading && <p className="py-12 text-center opacity-60">Loading the feed…</p>}
+        {feed.isLoading && <SkeletonFeed />}
         {feed.isError && (
           <p className="py-12 text-center opacity-60">
             Could not reach the server — is it running?
