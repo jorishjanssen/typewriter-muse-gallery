@@ -1,5 +1,14 @@
-import { extractFromHtml } from '@extractus/article-extractor';
 import { config } from '../config.js';
+
+// Loaded lazily: this library's dependency chain (sanitize-html requiring an
+// ESM-only htmlparser2) crashes Vercel's function runtime at load time. The
+// serverless API never extracts articles — only the scraper (GitHub Actions /
+// local Node) does, and plain Node handles the chain fine.
+let extractorPromise: Promise<typeof import('@extractus/article-extractor')> | null = null;
+function getExtractor() {
+  extractorPromise ??= import('@extractus/article-extractor');
+  return extractorPromise;
+}
 
 export interface Extracted {
   contentHtml: string | null;
@@ -30,6 +39,7 @@ export function htmlToText(html: string): string {
 /** Reader-mode extraction from an HTML string (fetched page or fixture). */
 export async function extractArticleFromHtml(html: string, url: string): Promise<Extracted> {
   try {
+    const { extractFromHtml } = await getExtractor();
     const article = await extractFromHtml(html, url);
     if (!article?.content) return EMPTY;
     return {
