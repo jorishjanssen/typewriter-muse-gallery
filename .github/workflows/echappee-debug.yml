@@ -1,0 +1,58 @@
+name: Échappée debug
+
+# Manual diagnostics: probe the public API and inspect the production DB.
+# Prints no secrets — only row counts, ids, column types and API responses.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Deployed app base URL
+        default: https://echappee-self.vercel.app
+      article_id:
+        description: Article id to test the single-article path with
+        default: '5'
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: echappee
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: echappee/package-lock.json
+      - run: npm ci
+
+      - name: Probe public API
+        env:
+          BASE: ${{ inputs.base_url }}
+          ID: ${{ inputs.article_id }}
+        run: |
+          for path in /api/status "/api/articles/$ID" "/api/feed?limit=2"; do
+            echo "=== GET $path"
+            curl -sS -w '\n(http %{http_code})\n' "$BASE$path" | head -c 3000
+            echo
+          done
+
+      - name: Inspect database
+        env:
+          DATABASE_URL: ${{ secrets.ECHAPPEE_DATABASE_URL }}
+          ID: ${{ inputs.article_id }}
+        run: |
+          node --input-type=module -e "
+          import postgres from 'postgres';
+          const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+          const id = Number(process.env.ID ?? 5);
+          console.log('counts:', await sql.unsafe('SELECT COUNT(*)::int AS n, MIN(id)::int AS min, MAX(id)::int AS max FROM articles'));
+          console.log('first ids:', await sql.unsafe('SELECT id FROM articles ORDER BY id LIMIT 5'));
+          console.log('id column:', await sql.unsafe(\"SELECT column_name, data_type FROM information_schema.columns WHERE table_name='articles' AND column_name='id'\"));
+          console.log('by id (param):', await sql.unsafe('SELECT id, title FROM articles WHERE id = \$1', [id]));
+          await sql.end({ timeout: 5 });
+          process.exit(0);
+          "
