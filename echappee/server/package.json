@@ -13,16 +13,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@extractus/article-extractor": "^8.0.10",
     "@fastify/static": "^8.0.0",
-    "better-sqlite3": "^11.10.0",
     "fastify": "^5.0.0",
     "node-cron": "^3.0.3",
     "openai": "^4.100.0",
+    "postgres": "^3.4.9",
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.0",

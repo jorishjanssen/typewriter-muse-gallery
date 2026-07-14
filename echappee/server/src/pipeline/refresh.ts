@@ -1,5 +1,5 @@
 import { config, llmEnabled } from '../config.js';
-import type { DB } from '../db.js';
+import { nowIso, type Db } from '../db.js';
 import { SOURCES, type SourceDef } from '../sources.js';
 import { enrichArticle } from '../llm.js';
 import { categorizeByKeywords } from './categorize.js';
@@ -18,7 +18,7 @@ let running = false;
 
 /** Full pipeline run over all enabled sources. Serialized: overlapping calls no-op. */
 export async function refreshAll(
-  db: DB,
+  db: Db,
   opts: { extract?: (url: string) => Promise<Extracted> } = {}
 ): Promise<RefreshStats> {
   if (running) return { sources: [], totalNew: 0 };
@@ -37,54 +37,60 @@ export async function refreshAll(
 }
 
 async function refreshSource(
-  db: DB,
+  db: Db,
   source: SourceDef,
   opts: { extract?: (url: string) => Promise<Extracted> }
 ): Promise<RefreshStats['sources'][number]> {
-  const markRun = db.prepare(
-    `INSERT INTO source_state (source_key, last_run_at) VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-     ON CONFLICT(source_key) DO UPDATE SET last_run_at = excluded.last_run_at`
+  await db.query(
+    `INSERT INTO source_state (source_key, last_run_at) VALUES ($1, $2)
+     ON CONFLICT (source_key) DO UPDATE SET last_run_at = EXCLUDED.last_run_at`,
+    [source.key, nowIso()]
   );
-  markRun.run(source.key);
 
   let items: FeedItem[];
   try {
     items = await fetchFeed(db, source);
   } catch (err) {
     const message = (err as Error).message.slice(0, 300);
-    db.prepare('UPDATE source_state SET last_error = ? WHERE source_key = ?').run(message, source.key);
+    await db.query('UPDATE source_state SET last_error = $1 WHERE source_key = $2', [
+      message,
+      source.key,
+    ]);
     return { key: source.key, ok: false, newArticles: 0, error: message };
   }
 
-  const exists = db.prepare('SELECT 1 FROM articles WHERE source_key = ? AND guid = ?');
-  const fresh = items.filter((i) => !exists.get(source.key, i.guid));
-
   let inserted = 0;
-  for (const item of fresh) {
+  for (const item of items) {
+    const exists = await db.query('SELECT 1 FROM articles WHERE source_key = $1 AND guid = $2', [
+      source.key,
+      item.guid,
+    ]);
+    if (exists.length > 0) continue;
     const extracted = await (opts.extract ?? extractArticle)(item.url);
     await ingestArticle(db, source, item, extracted);
     inserted++;
     if (!opts.extract) await sleep(config.scrape.perHostDelayMs);
   }
 
-  db.prepare(
-    `UPDATE source_state SET last_ok_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), last_error = NULL,
-       articles_total = (SELECT COUNT(*) FROM articles WHERE source_key = ?)
-     WHERE source_key = ?`
-  ).run(source.key, source.key);
+  await db.query(
+    `UPDATE source_state SET last_ok_at = $1, last_error = NULL,
+       articles_total = (SELECT COUNT(*) FROM articles WHERE source_key = $2)
+     WHERE source_key = $2`,
+    [nowIso(), source.key]
+  );
 
   return { key: source.key, ok: true, newArticles: inserted };
 }
 
 /** Insert one article, enriching (LLM or fallback) and assigning a cluster. */
 export async function ingestArticle(
-  db: DB,
+  db: Db,
   source: SourceDef,
   item: FeedItem,
   extracted: Extracted
 ): Promise<number> {
   const text = extracted.contentText ?? item.excerpt ?? '';
-  const candidates = recentClusters(db);
+  const candidates = await recentClusters(db);
 
   let summary: string | null = null;
   let category = categorizeByKeywords(item.title, text, source.defaultCategory);
@@ -104,25 +110,25 @@ export async function ingestArticle(
     }
   }
   if (clusterId === null) {
-    clusterId = matchClusterByTitle(item.title, candidates) ?? createCluster(db, item.title);
+    clusterId = matchClusterByTitle(item.title, candidates) ?? (await createCluster(db, item.title));
   }
-  touchCluster(db, clusterId);
+  await touchCluster(db, clusterId);
 
-  const res = db
-    .prepare(
-      `INSERT INTO articles
-         (source_key, guid, url, title, author, published_at, excerpt, content_html, content_text,
-          image_url, lang, category, summary, cluster_id, enriched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(source_key, guid) DO NOTHING`
-    )
-    .run(
+  const rows = await db.query<{ id: number }>(
+    `INSERT INTO articles
+       (source_key, guid, url, title, author, published_at, fetched_at, excerpt, content_html,
+        content_text, image_url, lang, category, summary, cluster_id, enriched_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     ON CONFLICT (source_key, guid) DO NOTHING
+     RETURNING id`,
+    [
       source.key,
       item.guid,
       item.url,
       item.title,
       extracted.author ?? item.author,
       item.publishedAt,
+      nowIso(),
       item.excerpt,
       extracted.contentHtml,
       extracted.contentText,
@@ -131,7 +137,8 @@ export async function ingestArticle(
       category,
       summary,
       clusterId,
-      summary ? new Date().toISOString() : null
-    );
-  return Number(res.lastInsertRowid);
+      summary ? nowIso() : null,
+    ]
+  );
+  return rows[0]?.id ?? 0;
 }

@@ -1,0 +1,52 @@
+name: Échappée scraper
+
+# Scrapes the configured cycling news sources into the production Postgres
+# database (Neon) that the Vercel deployment reads from.
+#
+# Required repository secrets:
+#   ECHAPPEE_DATABASE_URL  — Postgres connection string (from Neon/Vercel)
+#   ECHAPPEE_LLM_API_KEY   — optional; enables AI summaries/clustering
+#
+# Note: scheduled workflows only run from the repository's default branch.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: echappee-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: echappee
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check configuration
+        env:
+          DATABASE_URL: ${{ secrets.ECHAPPEE_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::ECHAPPEE_DATABASE_URL secret is not set — add it in repo Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: echappee/package-lock.json
+
+      - run: npm ci
+
+      - name: Scrape all sources
+        env:
+          DATABASE_URL: ${{ secrets.ECHAPPEE_DATABASE_URL }}
+          LLM_API_KEY: ${{ secrets.ECHAPPEE_LLM_API_KEY }}
+        run: npm run refresh --workspace server

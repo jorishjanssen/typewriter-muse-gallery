@@ -28,7 +28,7 @@ const fixtures = JSON.parse(
   fs.readFileSync(path.resolve(here, '../fixtures/sample-articles.json'), 'utf8')
 ) as Fixture[];
 
-const db = getDb();
+const db = await getDb();
 let added = 0;
 
 // Oldest first so clustering sees earlier coverage before later duplicates.
@@ -54,3 +54,4 @@ for (const f of [...fixtures].sort((a, b) => b.hoursAgo - a.hoursAgo)) {
 }
 
 console.log(`Seeded ${added} sample articles (${fixtures.length - added} already present).`);
+await db.close();

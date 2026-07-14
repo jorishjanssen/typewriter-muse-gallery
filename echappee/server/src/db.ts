@@ -1,11 +1,17 @@
-import Database from 'better-sqlite3';
-import fs from 'node:fs';
-import path from 'node:path';
 import { config } from './config.js';
 
-export type DB = Database.Database;
+/**
+ * Minimal async DB interface with two backends:
+ *  - Postgres (`DATABASE_URL` set) — production: Neon/Vercel, GitHub Actions scraper.
+ *  - PGlite (embedded WASM Postgres) — local dev (persisted to data/pg) and tests.
+ * All SQL is written once, in Postgres dialect with $n placeholders.
+ */
+export interface Db {
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+  close(): Promise<void>;
+}
 
-let db: DB | null = null;
+export const nowIso = (): string => new Date().toISOString();
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS source_state (
@@ -18,21 +24,21 @@ CREATE TABLE IF NOT EXISTS source_state (
 );
 
 CREATE TABLE IF NOT EXISTS clusters (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   title TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS articles (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   source_key TEXT NOT NULL,
   guid TEXT NOT NULL,
   url TEXT NOT NULL,
   title TEXT NOT NULL,
   author TEXT,
   published_at TEXT NOT NULL,
-  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  fetched_at TEXT NOT NULL,
   excerpt TEXT,
   content_html TEXT,
   content_text TEXT,
@@ -51,10 +57,10 @@ CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
 
 CREATE TABLE IF NOT EXISTS mutes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('term','source','category')),
   value TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  created_at TEXT NOT NULL,
   UNIQUE(kind, value)
 );
 
@@ -64,25 +70,73 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `;
 
-export function getDb(): DB {
-  if (db) return db;
-  fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
-  db = new Database(config.dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.exec(SCHEMA);
-  return db;
+class PostgresDb implements Db {
+  private sql: import('postgres').Sql;
+
+  constructor(sql: import('postgres').Sql) {
+    this.sql = sql;
+  }
+
+  static async create(url: string): Promise<PostgresDb> {
+    const { default: postgres } = await import('postgres');
+    // max 1: serverless functions and the CI scraper are single-threaded users.
+    const sql = postgres(url, { max: 1 });
+    await sql.unsafe(SCHEMA).simple();
+    return new PostgresDb(sql);
+  }
+
+  async query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+    const rows = await this.sql.unsafe(text, params as never[]);
+    return rows as unknown as T[];
+  }
+
+  async close(): Promise<void> {
+    await this.sql.end();
+  }
+}
+
+type PGliteInstance = {
+  query<T>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
+  exec(text: string): Promise<unknown>;
+  close(): Promise<void>;
+};
+
+class PgliteDb implements Db {
+  constructor(private pg: PGliteInstance) {}
+
+  static async create(dataDir?: string): Promise<PgliteDb> {
+    const { PGlite } = await import('@electric-sql/pglite');
+    if (dataDir) {
+      const { mkdirSync } = await import('node:fs');
+      mkdirSync(dataDir, { recursive: true });
+    }
+    const pg = (dataDir ? new PGlite(dataDir) : new PGlite()) as unknown as PGliteInstance;
+    await pg.exec(SCHEMA);
+    return new PgliteDb(pg);
+  }
+
+  async query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+    const res = await this.pg.query<T>(text, params);
+    return res.rows;
+  }
+
+  async close(): Promise<void> {
+    await this.pg.close();
+  }
+}
+
+let singleton: Promise<Db> | null = null;
+
+export function getDb(): Promise<Db> {
+  if (!singleton) {
+    singleton = config.databaseUrl
+      ? PostgresDb.create(config.databaseUrl)
+      : PgliteDb.create(config.dataDir);
+  }
+  return singleton;
 }
 
 /** For tests: an isolated in-memory database with the same schema. */
-export function createMemoryDb(): DB {
-  const mem = new Database(':memory:');
-  mem.pragma('foreign_keys = ON');
-  mem.exec(SCHEMA);
-  return mem;
-}
-
-export function closeDb(): void {
-  db?.close();
-  db = null;
+export function createMemoryDb(): Promise<Db> {
+  return PgliteDb.create();
 }

@@ -14,7 +14,8 @@ Product decisions captured from the kickoff Q&A (2026-07-14):
 | UI | Mobile-first installable PWA, clean reader aesthetic, dark/light |
 | Language | English UI; summaries in the article's original language |
 | Users | Single user, no auth (private network / trusted URL) |
-| Deployment | Docker (compose) on any VPS/home server |
+| Deployment | Vercel (PWA + API) + Neon Postgres + GitHub Actions scraper — see DEPLOY.md. Docker/compose remains for self-hosting |
+| Storage | Postgres dialect everywhere: Neon in production, embedded PGlite for local dev/tests |
 | Clusters | One card per story: best article + chips for other sources |
 | Name | Échappée (`echappee/`) |
 

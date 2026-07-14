@@ -6,7 +6,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const config = {
   port: Number(process.env.PORT ?? 3600),
   host: process.env.HOST ?? '0.0.0.0',
-  dbPath: process.env.DB_PATH ?? path.resolve(here, '../../data/echappee.db'),
+  // Postgres connection string (Neon/Vercel/any). Empty = embedded PGlite in dataDir.
+  databaseUrl: process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? '',
+  dataDir: process.env.DATA_DIR ?? path.resolve(here, '../../data/pg'),
   webDist: process.env.WEB_DIST ?? path.resolve(here, '../../web/dist'),
   // Any OpenAI-compatible provider works; DeepSeek is the default.
   llm: {

@@ -20,7 +20,15 @@ Open http://localhost:5173. The feed refreshes from all sources every
 30 minutes; use the refresh button (or `npm run refresh`) to trigger a run
 manually.
 
-## Production / Docker
+## Production
+
+Two supported setups:
+
+- **Vercel + Neon + GitHub Actions scraper** — see [DEPLOY.md](./DEPLOY.md)
+  for a phone-friendly step-by-step. The API/PWA run on Vercel, the database
+  is Neon Postgres, and the scraper runs as a scheduled GitHub workflow
+  (`.github/workflows/echappee-scrape.yml`).
+- **Docker on your own box**:
 
 ```bash
 cd echappee
@@ -32,6 +40,12 @@ Open http://your-host:3600 and "Add to Home Screen" on your phone.
 
 Without Docker: `npm run build && npm start` serves the built PWA and API
 from one process on `:3600`.
+
+## Storage
+
+The app speaks Postgres. With `DATABASE_URL` set it uses that (Neon in
+production); without it, it runs an embedded Postgres (PGlite) persisted to
+`data/pg` — zero setup for local dev, and what the tests use in-memory.
 
 ## LLM configuration
 
@@ -64,16 +78,15 @@ article fetches per host, honest User-Agent, ~25 items max per source per run.
 
 ```
 echappee/
-├─ server/          Fastify + better-sqlite3 + node-cron (TypeScript, ESM)
+├─ server/          Fastify + Postgres/PGlite + node-cron (TypeScript, ESM)
 │  ├─ src/pipeline/ fetchFeeds → extract (reader mode) → enrich (LLM) → store
 │  ├─ src/routes/   REST API (/api/feed, /api/articles/:id, mutes, sources…)
 │  └─ fixtures/     sample articles for offline dev + tests (npm run seed)
 ├─ web/             React + Vite + Tailwind PWA (feed / reader / settings)
+├─ api/             Vercel serverless entrypoint (wraps the same Fastify API)
+├─ vercel.json      Vercel build config (root directory: echappee)
 └─ Dockerfile       single container: API + static PWA + scheduler
 ```
-
-Everything lives in one SQLite file (`data/echappee.db`, WAL mode); back it
-up by copying the file.
 
 ## Commands
 

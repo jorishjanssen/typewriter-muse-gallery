@@ -1,4 +1,4 @@
-import type { DB } from '../db.js';
+import { nowIso, type Db } from '../db.js';
 
 export interface ClusterCandidate {
   id: number;
@@ -6,19 +6,17 @@ export interface ClusterCandidate {
 }
 
 /** Clusters that recently got articles — the only ones worth matching against. */
-export function recentClusters(db: DB, hours = 72, limit = 40): ClusterCandidate[] {
-  return db
-    .prepare(
-      `SELECT c.id, c.title FROM clusters c
-       WHERE c.updated_at >= datetime('now', ?)
-       ORDER BY c.updated_at DESC LIMIT ?`
-    )
-    .all(`-${hours} hours`, limit) as ClusterCandidate[];
+export async function recentClusters(db: Db, hours = 72, limit = 40): Promise<ClusterCandidate[]> {
+  const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+  return db.query<ClusterCandidate>(
+    `SELECT id, title FROM clusters WHERE updated_at >= $1 ORDER BY updated_at DESC LIMIT $2`,
+    [cutoff, limit]
+  );
 }
 
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'with', 'after', 'his', 'her',
-  'de', 'het', 'een', 'van', 'in', 'op', 'na', 'voor', 'met', 'en', 'bij', 'om', 'naar',
+  'de', 'het', 'een', 'van', 'op', 'na', 'voor', 'met', 'en', 'bij', 'om', 'naar',
 ]);
 
 function tokens(title: string): Set<string> {
@@ -56,13 +54,15 @@ export function matchClusterByTitle(
   return best?.id ?? null;
 }
 
-export function createCluster(db: DB, title: string): number {
-  const res = db.prepare('INSERT INTO clusters (title) VALUES (?)').run(title);
-  return Number(res.lastInsertRowid);
+export async function createCluster(db: Db, title: string): Promise<number> {
+  const now = nowIso();
+  const rows = await db.query<{ id: number }>(
+    'INSERT INTO clusters (title, created_at, updated_at) VALUES ($1, $2, $2) RETURNING id',
+    [title, now]
+  );
+  return rows[0].id;
 }
 
-export function touchCluster(db: DB, id: number): void {
-  db.prepare(
-    `UPDATE clusters SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
-  ).run(id);
+export async function touchCluster(db: Db, id: number): Promise<void> {
+  await db.query('UPDATE clusters SET updated_at = $1 WHERE id = $2', [nowIso(), id]);
 }

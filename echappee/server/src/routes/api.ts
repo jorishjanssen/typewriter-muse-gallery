@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { DB } from '../db.js';
+import { nowIso, type Db } from '../db.js';
 import { SOURCES } from '../sources.js';
 import { config, llmEnabled } from '../config.js';
 import { refreshAll } from '../pipeline/refresh.js';
@@ -27,8 +27,8 @@ interface Mute {
   value: string;
 }
 
-function getMutes(db: DB): Mute[] {
-  return db.prepare('SELECT id, kind, value FROM mutes ORDER BY created_at DESC').all() as Mute[];
+function getMutes(db: Db): Promise<Mute[]> {
+  return db.query<Mute>('SELECT id, kind, value FROM mutes ORDER BY created_at DESC');
 }
 
 function articleCard(row: ArticleRow) {
@@ -50,13 +50,16 @@ function articleCard(row: ArticleRow) {
   };
 }
 
-export function registerApi(app: FastifyInstance, db: DB): void {
+const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt, content_text,
+                image_url, lang, category, summary, cluster_id, read_at`;
+
+export function registerApi(app: FastifyInstance, db: Db): void {
   // ---- Feed: newest clusters, one card each --------------------------------
   app.get<{
     Querystring: { category?: string; source?: string; unread?: string; before?: string; limit?: string };
   }>('/api/feed', async (req) => {
     const limit = Math.min(Number(req.query.limit ?? 25), 100);
-    const mutes = getMutes(db);
+    const mutes = await getMutes(db);
     const mutedSources = new Set(mutes.filter((m) => m.kind === 'source').map((m) => m.value));
     const mutedCategories = new Set(mutes.filter((m) => m.kind === 'category').map((m) => m.value));
     const mutedTerms = mutes.filter((m) => m.kind === 'term').map((m) => m.value.toLowerCase());
@@ -64,28 +67,26 @@ export function registerApi(app: FastifyInstance, db: DB): void {
     const where: string[] = [];
     const params: unknown[] = [];
     if (req.query.category) {
-      where.push('category = ?');
       params.push(req.query.category);
+      where.push(`category = $${params.length}`);
     }
     if (req.query.source) {
-      where.push('source_key = ?');
       params.push(req.query.source);
+      where.push(`source_key = $${params.length}`);
     }
     if (req.query.unread === '1') where.push('read_at IS NULL');
     if (req.query.before) {
-      where.push('published_at < ?');
       params.push(req.query.before);
+      where.push(`published_at < $${params.length}`);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     // Over-fetch article rows, then group into cluster cards until `limit`.
-    const rows = db
-      .prepare(
-        `SELECT id, source_key, url, title, author, published_at, excerpt, content_text,
-                image_url, lang, category, summary, cluster_id, read_at
-         FROM articles ${whereSql}
-         ORDER BY published_at DESC LIMIT ?`
-      )
-      .all(...params, limit * 5) as ArticleRow[];
+    params.push(limit * 5);
+    const rows = await db.query<ArticleRow>(
+      `SELECT ${ARTICLE_COLS} FROM articles ${whereSql}
+       ORDER BY published_at DESC LIMIT $${params.length}`,
+      params
+    );
 
     const visible = rows.filter((r) => {
       if (mutedSources.has(r.source_key) || mutedCategories.has(r.category)) return false;
@@ -125,41 +126,39 @@ export function registerApi(app: FastifyInstance, db: DB): void {
 
   // ---- Single article (reader view) ----------------------------------------
   app.get<{ Params: { id: string } }>('/api/articles/:id', async (req, reply) => {
-    const row = db
-      .prepare(
-        `SELECT id, source_key, url, title, author, published_at, excerpt, content_html, content_text,
-                image_url, lang, category, summary, cluster_id, read_at
-         FROM articles WHERE id = ?`
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return reply.code(404).send({ error: 'not found' });
+    const row = (
+      await db.query<ArticleRow & { content_html: string | null }>(
+        `SELECT ${ARTICLE_COLS}, content_html FROM articles WHERE id = $1`,
+        [id]
       )
-      .get(req.params.id) as (ArticleRow & { content_html: string | null }) | undefined;
+    )[0];
     if (!row) return reply.code(404).send({ error: 'not found' });
-    const siblings = db
-      .prepare(
-        `SELECT id, source_key, url, title, author, published_at, excerpt, content_text,
-                image_url, lang, category, summary, cluster_id, read_at
-         FROM articles WHERE cluster_id = ? AND id != ? ORDER BY published_at DESC`
-      )
-      .all(row.cluster_id, row.id) as ArticleRow[];
+    const siblings = await db.query<ArticleRow>(
+      `SELECT ${ARTICLE_COLS} FROM articles
+       WHERE cluster_id = $1 AND id != $2 ORDER BY published_at DESC`,
+      [row.cluster_id, row.id]
+    );
     return { ...articleCard(row), contentHtml: row.content_html, alternates: siblings.map(articleCard) };
   });
 
   // ---- Read state -----------------------------------------------------------
   app.post<{ Params: { id: string } }>('/api/articles/:id/read', async (req) => {
-    db.prepare(
-      `UPDATE articles SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND read_at IS NULL`
-    ).run(req.params.id);
+    await db.query('UPDATE articles SET read_at = $1 WHERE id = $2 AND read_at IS NULL', [
+      nowIso(),
+      Number(req.params.id),
+    ]);
     return { ok: true };
   });
 
   app.post<{ Params: { id: string } }>('/api/articles/:id/unread', async (req) => {
-    db.prepare('UPDATE articles SET read_at = NULL WHERE id = ?').run(req.params.id);
+    await db.query('UPDATE articles SET read_at = NULL WHERE id = $1', [Number(req.params.id)]);
     return { ok: true };
   });
 
   app.post('/api/read-all', async () => {
-    db.prepare(
-      `UPDATE articles SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE read_at IS NULL`
-    ).run();
+    await db.query('UPDATE articles SET read_at = $1 WHERE read_at IS NULL', [nowIso()]);
     return { ok: true };
   });
 
@@ -171,25 +170,28 @@ export function registerApi(app: FastifyInstance, db: DB): void {
     if (!['term', 'source', 'category'].includes(kind) || !value?.trim()) {
       return reply.code(400).send({ error: 'kind must be term|source|category and value non-empty' });
     }
-    db.prepare('INSERT OR IGNORE INTO mutes (kind, value) VALUES (?, ?)').run(kind, value.trim());
+    await db.query(
+      'INSERT INTO mutes (kind, value, created_at) VALUES ($1, $2, $3) ON CONFLICT (kind, value) DO NOTHING',
+      [kind, value.trim(), nowIso()]
+    );
     return getMutes(db);
   });
 
   app.delete<{ Params: { id: string } }>('/api/mutes/:id', async (req) => {
-    db.prepare('DELETE FROM mutes WHERE id = ?').run(req.params.id);
+    await db.query('DELETE FROM mutes WHERE id = $1', [Number(req.params.id)]);
     return getMutes(db);
   });
 
   // ---- Sources health -------------------------------------------------------
   app.get('/api/sources', async () => {
-    const states = db.prepare('SELECT * FROM source_state').all() as {
+    const states = await db.query<{
       source_key: string;
       working_feed_url: string | null;
       last_run_at: string | null;
       last_ok_at: string | null;
       last_error: string | null;
       articles_total: number;
-    }[];
+    }>('SELECT * FROM source_state');
     return SOURCES.map((s) => {
       const st = states.find((x) => x.source_key === s.key);
       return {
@@ -202,28 +204,33 @@ export function registerApi(app: FastifyInstance, db: DB): void {
         lastRunAt: st?.last_run_at ?? null,
         lastOkAt: st?.last_ok_at ?? null,
         lastError: st?.last_error ?? null,
-        articlesTotal: st?.articles_total ?? 0,
+        articlesTotal: Number(st?.articles_total ?? 0),
       };
     });
   });
 
   // ---- Status + manual refresh ----------------------------------------------
   app.get('/api/status', async () => {
-    const counts = db
-      .prepare(
-        `SELECT COUNT(*) AS total, SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread FROM articles`
+    const counts = (
+      await db.query<{ total: number; unread: number }>(
+        `SELECT COUNT(*)::int AS total,
+                COALESCE(SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END), 0)::int AS unread
+         FROM articles`
       )
-      .get() as { total: number; unread: number | null };
+    )[0];
     return {
       articles: counts.total,
-      unread: counts.unread ?? 0,
+      unread: counts.unread,
       llm: { enabled: llmEnabled(), model: config.llm.model, baseUrl: config.llm.baseUrl },
       scrapeIntervalMinutes: config.scrape.intervalMinutes,
+      managedScraper: Boolean(process.env.VERCEL),
     };
   });
 
   app.post('/api/refresh', async () => {
-    // Fire and forget; the UI polls /api/status for new counts.
+    // On Vercel the scraper runs as a scheduled GitHub Actions workflow —
+    // a serverless function would hit time limits long before finishing.
+    if (process.env.VERCEL) return { started: false, managed: true };
     void refreshAll(db).catch((err) => app.log.error(err));
     return { started: true };
   });

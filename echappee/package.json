@@ -2,11 +2,15 @@
   "name": "echappee",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "description": "Ad-free cycling news aggregator — scrapes the sources you care about, one clean feed.",
   "workspaces": [
     "server",
     "web"
   ],
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "npm run dev --workspace server & npm run dev --workspace web & wait",
     "build": "npm run build --workspace web && npm run build --workspace server",

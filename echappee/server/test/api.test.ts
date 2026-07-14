@@ -1,12 +1,12 @@
 import Fastify from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createMemoryDb, type DB } from '../src/db.js';
+import { createMemoryDb, type Db } from '../src/db.js';
 import { registerApi } from '../src/routes/api.js';
 import { ingestArticle } from '../src/pipeline/refresh.js';
 import { getSource } from '../src/sources.js';
 
 let app: ReturnType<typeof Fastify>;
-let db: DB;
+let db: Db;
 
 const extracted = {
   contentHtml: '<p>' + 'long body text '.repeat(30) + '</p>',
@@ -16,7 +16,7 @@ const extracted = {
 };
 
 beforeAll(async () => {
-  db = createMemoryDb();
+  db = await createMemoryDb();
   const cn = getSource('cyclingnews')!;
   const wf = getSource('wielerflits')!;
   const br = getSource('bikeradar')!;
@@ -44,6 +44,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  await db.close();
 });
 
 describe('GET /api/feed', () => {

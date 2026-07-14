@@ -8,7 +8,7 @@ import { registerApi } from './routes/api.js';
 import { refreshAll } from './pipeline/refresh.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
-const db = getDb();
+const db = await getDb();
 
 registerApi(app, db);
 

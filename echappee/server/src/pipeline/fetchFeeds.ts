@@ -1,7 +1,7 @@
 import Parser from 'rss-parser';
 import { config } from '../config.js';
 import type { SourceDef } from '../sources.js';
-import type { DB } from '../db.js';
+import type { Db } from '../db.js';
 
 export interface FeedItem {
   guid: string;
@@ -55,10 +55,13 @@ function toItem(raw: Parser.Item & Record<string, unknown>): FeedItem | null {
  * The first working URL is remembered in source_state and tried first
  * on subsequent runs.
  */
-export async function fetchFeed(db: DB, source: SourceDef): Promise<FeedItem[]> {
-  const remembered = db
-    .prepare('SELECT working_feed_url FROM source_state WHERE source_key = ?')
-    .get(source.key) as { working_feed_url: string | null } | undefined;
+export async function fetchFeed(db: Db, source: SourceDef): Promise<FeedItem[]> {
+  const remembered = (
+    await db.query<{ working_feed_url: string | null }>(
+      'SELECT working_feed_url FROM source_state WHERE source_key = $1',
+      [source.key]
+    )
+  )[0];
 
   const urls = [...new Set([remembered?.working_feed_url, ...source.feedUrls].filter(Boolean))] as string[];
 
@@ -70,10 +73,11 @@ export async function fetchFeed(db: DB, source: SourceDef): Promise<FeedItem[]> 
         .map((i) => toItem(i as unknown as Parser.Item & Record<string, unknown>))
         .filter((i): i is FeedItem => i !== null)
         .slice(0, config.scrape.maxItemsPerSourcePerRun);
-      db.prepare(
-        `INSERT INTO source_state (source_key, working_feed_url) VALUES (?, ?)
-         ON CONFLICT(source_key) DO UPDATE SET working_feed_url = excluded.working_feed_url`
-      ).run(source.key, url);
+      await db.query(
+        `INSERT INTO source_state (source_key, working_feed_url) VALUES ($1, $2)
+         ON CONFLICT (source_key) DO UPDATE SET working_feed_url = EXCLUDED.working_feed_url`,
+        [source.key, url]
+      );
       return items;
     } catch (err) {
       lastError = err as Error;

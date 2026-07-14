@@ -18,7 +18,8 @@ COPY web/package.json web/
 RUN npm ci --omit=dev --workspace server && npm cache clean --force
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
-ENV DB_PATH=/data/echappee.db
+# Embedded PGlite storage by default; set DATABASE_URL to use hosted Postgres.
+ENV DATA_DIR=/data/pg
 ENV WEB_DIST=/app/web/dist
 ENV PORT=3600
 VOLUME /data

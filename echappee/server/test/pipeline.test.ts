@@ -36,11 +36,13 @@ describe('title clustering fallback', () => {
     expect(matchClusterByTitle('Vollering takes command of the Vuelta Femenina', candidates)).toBeNull();
   });
 
-  it('only matches clusters updated recently', () => {
-    const db = createMemoryDb();
-    const id = createCluster(db, 'Old story');
-    db.prepare(`UPDATE clusters SET updated_at = datetime('now', '-10 days') WHERE id = ?`).run(id);
-    expect(recentClusters(db)).toHaveLength(0);
+  it('only matches clusters updated recently', async () => {
+    const db = await createMemoryDb();
+    const id = await createCluster(db, 'Old story');
+    const old = new Date(Date.now() - 10 * 24 * 3600_000).toISOString();
+    await db.query('UPDATE clusters SET updated_at = $1 WHERE id = $2', [old, id]);
+    expect(await recentClusters(db)).toHaveLength(0);
+    await db.close();
   });
 });
 
@@ -67,7 +69,7 @@ describe('parseEnrichment', () => {
 
 describe('ingestArticle', () => {
   it('inserts, categorizes and clusters duplicate coverage without an LLM', async () => {
-    const db = createMemoryDb();
+    const db = await createMemoryDb();
     const cyclingnews = getSource('cyclingnews')!;
     const wielerflits = getSource('wielerflits')!;
     const extracted = { contentHtml: '<p>body</p>', contentText: 'body', imageUrl: null, author: null };
@@ -97,18 +99,19 @@ describe('ingestArticle', () => {
       title: 'New wireless groupset leaks in race photos',
     }, extracted);
 
-    const rows = db
-      .prepare('SELECT guid, category, cluster_id FROM articles ORDER BY guid')
-      .all() as { guid: string; category: string; cluster_id: number }[];
+    const rows = await db.query<{ guid: string; category: string; cluster_id: number }>(
+      'SELECT guid, category, cluster_id FROM articles ORDER BY guid'
+    );
     expect(rows).toHaveLength(3);
     expect(rows[0].cluster_id).toBe(rows[1].cluster_id);
     expect(rows[2].cluster_id).not.toBe(rows[0].cluster_id);
     expect(rows[0].category).toBe('racing');
     expect(rows[2].category).toBe('gear');
+    await db.close();
   });
 
   it('is idempotent on duplicate guids', async () => {
-    const db = createMemoryDb();
+    const db = await createMemoryDb();
     const source = getSource('velo')!;
     const item = {
       guid: 'dup',
@@ -122,7 +125,8 @@ describe('ingestArticle', () => {
     const extracted = { contentHtml: null, contentText: null, imageUrl: null, author: null };
     await ingestArticle(db, source, item, extracted);
     await ingestArticle(db, source, item, extracted);
-    const count = db.prepare('SELECT COUNT(*) AS n FROM articles').get() as { n: number };
-    expect(count.n).toBe(1);
+    const count = await db.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM articles');
+    expect(count[0].n).toBe(1);
+    await db.close();
   });
 });
