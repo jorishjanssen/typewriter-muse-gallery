@@ -1,11 +1,10 @@
 // Vercel serverless entrypoint: one catch-all function hosting the whole
-// Fastify API. Imports the compiled server (built by `npm run build` during
-// the Vercel build step) so no TS resolution happens at bundle time.
-import Fastify from 'fastify';
-import { getDb } from '../server/dist/db.js';
-import { registerApi } from '../server/dist/routes/api.js';
-
-const app = Fastify({ logger: false });
+// Fastify API (compiled to server/dist by `npm run build` during the Vercel
+// build). Everything is loaded inside a caught async block so that ANY
+// startup failure — missing env, missing module, DB unreachable — surfaces
+// as a JSON 500 with the real reason instead of FUNCTION_INVOCATION_FAILED.
+let app = null;
+let startupError = null;
 
 const ready = (async () => {
   if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
@@ -13,18 +12,27 @@ const ready = (async () => {
       'DATABASE_URL is not set. Connect a Postgres database (Vercel → Storage → Neon) to this project and redeploy.'
     );
   }
-  registerApi(app, await getDb());
-  await app.ready();
-})();
+  const { default: Fastify } = await import('fastify');
+  const { getDb } = await import('../server/dist/db.js');
+  const { registerApi } = await import('../server/dist/routes/api.js');
+  const instance = Fastify({ logger: false });
+  registerApi(instance, await getDb());
+  await instance.ready();
+  app = instance;
+})().catch((err) => {
+  startupError = err;
+});
 
 export default async function handler(req, res) {
-  try {
-    await ready;
-  } catch (err) {
-    // Surface the real problem instead of a generic function crash.
+  await ready;
+  if (!app) {
     res.statusCode = 500;
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+    res.end(
+      JSON.stringify({
+        error: String(startupError?.stack ?? startupError ?? 'startup failed'),
+      })
+    );
     return;
   }
   app.server.emit('request', req, res);
