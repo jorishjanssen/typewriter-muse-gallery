@@ -1,0 +1,17 @@
+services:
+  echappee:
+    build: .
+    ports:
+      - "3600:3600"
+    volumes:
+      - echappee-data:/data
+    environment:
+      # Any OpenAI-compatible provider; DeepSeek is the default.
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      SCRAPE_INTERVAL_MINUTES: ${SCRAPE_INTERVAL_MINUTES:-30}
+    restart: unless-stopped
+
+volumes:
+  echappee-data:

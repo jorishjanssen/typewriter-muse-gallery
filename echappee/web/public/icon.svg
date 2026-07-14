@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#16181d"/>
+  <!-- Breakaway rider: a dot escaping the peloton line -->
+  <circle cx="44" cy="24" r="7" fill="#e04f1f"/>
+  <circle cx="18" cy="42" r="5" fill="#e8e6e3"/>
+  <circle cx="29" cy="42" r="5" fill="#e8e6e3" opacity="0.75"/>
+  <circle cx="40" cy="42" r="5" fill="#e8e6e3" opacity="0.5"/>
+</svg>
