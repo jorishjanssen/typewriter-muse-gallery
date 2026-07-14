@@ -10,6 +10,8 @@ export interface SourceDef {
   /** Default category when the LLM is unavailable and keywords don't decide. */
   defaultCategory: Category;
   enabled: boolean;
+  /** Some CDNs reject non-browser user agents (406/403); this sends a browser UA instead. */
+  browserUa?: boolean;
 }
 
 /**
@@ -60,6 +62,7 @@ export const SOURCES: SourceDef[] = [
     lang: 'en',
     defaultCategory: 'gear',
     enabled: true,
+    browserUa: true,
   },
   {
     key: 'wielerflits',

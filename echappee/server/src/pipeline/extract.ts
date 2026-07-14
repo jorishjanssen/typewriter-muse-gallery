@@ -44,11 +44,11 @@ export async function extractArticleFromHtml(html: string, url: string): Promise
 }
 
 /** Fetch a page politely and run reader-mode extraction on it. */
-export async function extractArticle(url: string): Promise<Extracted> {
+export async function extractArticle(url: string, userAgent?: string): Promise<Extracted> {
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': config.scrape.userAgent },
-      signal: AbortSignal.timeout(25_000),
+      headers: { 'User-Agent': userAgent ?? config.scrape.userAgent },
+      signal: AbortSignal.timeout(config.scrape.fetchTimeoutMs),
       redirect: 'follow',
     });
     if (!res.ok) return EMPTY;

@@ -13,16 +13,25 @@ export interface FeedItem {
   imageUrl: string | null;
 }
 
-const parser = new Parser({
-  timeout: 20_000,
-  headers: { 'User-Agent': config.scrape.userAgent, Accept: 'application/rss+xml, application/xml, text/xml' },
-  customFields: {
-    item: [
-      ['media:content', 'mediaContent', { keepArray: true }],
-      ['media:thumbnail', 'mediaThumbnail'],
-    ],
-  },
-});
+export const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+export function userAgentFor(source: Pick<SourceDef, 'browserUa'>): string {
+  return source.browserUa ? BROWSER_UA : config.scrape.userAgent;
+}
+
+function makeParser(userAgent: string): Parser {
+  return new Parser({
+    timeout: 20_000,
+    headers: { 'User-Agent': userAgent, Accept: 'application/rss+xml, application/xml, text/xml' },
+    customFields: {
+      item: [
+        ['media:content', 'mediaContent', { keepArray: true }],
+        ['media:thumbnail', 'mediaThumbnail'],
+      ],
+    },
+  });
+}
 
 function itemImage(item: Record<string, unknown>): string | null {
   const enc = item.enclosure as { url?: string; type?: string } | undefined;
@@ -64,6 +73,7 @@ export async function fetchFeed(db: Db, source: SourceDef): Promise<FeedItem[]> 
   )[0];
 
   const urls = [...new Set([remembered?.working_feed_url, ...source.feedUrls].filter(Boolean))] as string[];
+  const parser = makeParser(userAgentFor(source));
 
   let lastError: Error | null = null;
   for (const url of urls) {

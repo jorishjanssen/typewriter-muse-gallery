@@ -49,4 +49,9 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.ECHAPPEE_DATABASE_URL }}
           LLM_API_KEY: ${{ secrets.ECHAPPEE_LLM_API_KEY }}
+          # CI runs on a 30-min cadence with a 25-min cap: keep runs snappy.
+          # Progress persists per article, so a capped run just continues next time.
+          SCRAPE_PER_HOST_DELAY_MS: '250'
+          SCRAPE_FETCH_TIMEOUT_MS: '10000'
+          SCRAPE_MAX_ITEMS: '15'
         run: npm run refresh --workspace server

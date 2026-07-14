@@ -24,6 +24,8 @@ export const config = {
     // Delay between article fetches to the same host.
     perHostDelayMs: Number(process.env.SCRAPE_PER_HOST_DELAY_MS ?? 2000),
     maxItemsPerSourcePerRun: Number(process.env.SCRAPE_MAX_ITEMS ?? 25),
+    // Per-page fetch timeout for article extraction.
+    fetchTimeoutMs: Number(process.env.SCRAPE_FETCH_TIMEOUT_MS ?? 25_000),
   },
 };
 
