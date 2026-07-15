@@ -7,6 +7,19 @@ export interface Enrichment {
   category: Category;
   /** Index into the candidate cluster list, or null for a new story. */
   clusterMatch: number | null;
+  /** Full names of the riders the article is mainly about (0-3). */
+  riders: string[];
+}
+
+/** Diacritic-insensitive grouping key: "Tadej Pogačar" and "Pogacar" unify. */
+export function riderKey(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 const CATEGORIES: Category[] = ['racing', 'transfers', 'gear', 'offroad', 'other'];
@@ -28,10 +41,12 @@ Given one article and a list of recent story clusters, respond with ONLY a JSON 
 {
   "summary": "2 concise sentences in the SAME language as the article",
   "category": "racing" | "transfers" | "gear" | "offroad" | "other",
-  "cluster_match": <index of the cluster covering the SAME news event, or null>
+  "cluster_match": <index of the cluster covering the SAME news event, or null>,
+  "riders": ["Full official rider name", ...]
 }
 Category guide: racing = race reports/previews/results; transfers = contracts, team moves, rider career news, injuries; gear = bikes, components, products, tech; offroad = gravel/MTB/cyclocross/track; other = everything else.
-cluster_match must only be set when the article covers the same concrete news event as the cluster, not merely the same topic.`;
+cluster_match must only be set when the article covers the same concrete news event as the cluster, not merely the same topic.
+riders: at most 3, ONLY the riders the article is mainly about — not everyone mentioned. Use the full official name with correct diacritics (e.g. "Tadej Pogačar", "Mathieu van der Poel"). [] when the article is not about specific riders.`;
 
 export async function enrichArticle(input: {
   title: string;
@@ -81,6 +96,7 @@ export function parseEnrichment(raw: string, clusterCount: number): Enrichment |
       summary?: unknown;
       category?: unknown;
       cluster_match?: unknown;
+      riders?: unknown;
     };
     const summary = typeof obj.summary === 'string' ? obj.summary.trim() : '';
     const category = CATEGORIES.includes(obj.category as Category)
@@ -95,8 +111,18 @@ export function parseEnrichment(raw: string, clusterCount: number): Enrichment |
     ) {
       clusterMatch = obj.cluster_match;
     }
+    const riders = Array.isArray(obj.riders)
+      ? [
+          ...new Set(
+            obj.riders
+              .filter((r): r is string => typeof r === 'string')
+              .map((r) => r.trim())
+              .filter((r) => r.length > 1 && r.length < 60)
+          ),
+        ].slice(0, 3)
+      : [];
     if (!summary) return null;
-    return { summary, category, clusterMatch };
+    return { summary, category, clusterMatch, riders };
   } catch {
     return null;
   }

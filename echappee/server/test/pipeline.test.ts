@@ -96,12 +96,29 @@ describe('sanitizeFragment', () => {
 describe('parseEnrichment', () => {
   it('parses clean and fenced JSON, clamping bad cluster indices', () => {
     const clean = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":0}', 2);
-    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0 });
+    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [] });
 
     const fenced = parseEnrichment('```json\n{"summary":"S.","category":"nonsense","cluster_match":9}\n```', 2);
-    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null });
+    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [] });
 
     expect(parseEnrichment('no json here', 0)).toBeNull();
+  });
+
+  it('validates and caps riders', () => {
+    const result = parseEnrichment(
+      '{"summary":"S.","category":"racing","cluster_match":null,"riders":["Tadej Pogačar"," Remco Evenepoel ","Tadej Pogačar",42,"Wout van Aert","Jonas Vingegaard"]}',
+      0
+    );
+    expect(result?.riders).toEqual(['Tadej Pogačar', 'Remco Evenepoel', 'Wout van Aert']);
+  });
+});
+
+describe('riderKey', () => {
+  it('unifies diacritics, case and spacing', async () => {
+    const { riderKey } = await import('../src/llm.js');
+    expect(riderKey('Tadej Pogačar')).toBe('tadej pogacar');
+    expect(riderKey('  tadej   POGACAR ')).toBe('tadej pogacar');
+    expect(riderKey('Mathieu van der Poel')).toBe('mathieu van der poel');
   });
 });
 

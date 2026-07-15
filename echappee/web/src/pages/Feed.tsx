@@ -1,17 +1,11 @@
-import {
-  keepPreviousData,
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type InfiniteData,
-} from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import PullToRefresh from '../components/PullToRefresh';
 import { SkeletonFeed } from '../components/Skeleton';
 import StoryCard from '../components/StoryCard';
 import TopBar, { IconButton } from '../components/TopBar';
-import { api, CATEGORY_LABELS, type Category, type FeedCard, type FeedPage } from '../lib/api';
+import { api, CATEGORY_LABELS, type Category, type FeedCard } from '../lib/api';
+import { useToggleRead } from '../lib/useToggleRead';
 
 const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 'offroad', 'other'];
 const SHOW_READ_KEY = 'echappee-show-read';
@@ -45,40 +39,7 @@ export default function Feed() {
     placeholderData: keepPreviousData,
   });
 
-  const toggleRead = useMutation({
-    mutationFn: ({ clusterId, read }: { clusterId: number; read: boolean }) =>
-      read ? api.markClusterRead(clusterId) : api.markClusterUnread(clusterId),
-    onMutate: async ({ clusterId, read }) => {
-      await queryClient.cancelQueries({ queryKey: ['feed'] });
-      const snapshots = queryClient.getQueriesData<InfiniteData<FeedPage>>({ queryKey: ['feed'] });
-      for (const [key, data] of snapshots) {
-        if (!data) continue;
-        queryClient.setQueryData(key, {
-          ...data,
-          pages: data.pages.map((p) => ({
-            ...p,
-            cards: p.cards.map((c) =>
-              c.clusterId === clusterId
-                ? {
-                    ...c,
-                    read,
-                    article: { ...c.article, read },
-                    alternates: c.alternates.map((alt) => ({ ...alt, read })),
-                  }
-                : c
-            ),
-          })),
-        });
-      }
-      return { snapshots };
-    },
-    onError: (_err, _vars, ctx) => {
-      ctx?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data));
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['status'] });
-    },
-  });
+  const toggleRead = useToggleRead();
 
   const handleToggleRead = (card: FeedCard) => {
     const read = !card.read;
@@ -113,6 +74,12 @@ export default function Feed() {
         unread={status.data?.unread}
         right={
           <>
+            <IconButton label="Riders" to="/riders">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </IconButton>
             <IconButton label="Settings" to="/settings">
               <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <circle cx="12" cy="12" r="3" />

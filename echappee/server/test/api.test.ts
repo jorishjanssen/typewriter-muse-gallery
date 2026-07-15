@@ -114,6 +114,35 @@ describe('cluster read state', () => {
   });
 });
 
+describe('riders', () => {
+  it('aggregates riders across name variants and filters the feed', async () => {
+    const { saveRiders } = await import('../src/pipeline/refresh.js');
+    // Same rider with and without diacritics on two articles, once elsewhere.
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const [c1, c2] = feed.cards;
+    await saveRiders(db, c1.article.id, ['Tadej Pogačar', 'Remco Evenepoel']);
+    await saveRiders(db, c2.article.id, ['Tadej Pogacar']);
+
+    const riders = (await app.inject({ method: 'GET', url: '/api/riders' })).json() as any[];
+    const pog = riders.find((r) => r.key === 'tadej pogacar');
+    expect(pog).toBeDefined();
+    expect(pog.articles).toBe(2);
+    expect(riders.find((r) => r.key === 'remco evenepoel')?.articles).toBe(1);
+
+    const filtered = (
+      await app.inject({ method: 'GET', url: '/api/feed?rider=tadej%20pogacar' })
+    ).json() as { cards: any[] };
+    const ids = filtered.cards.map((c) => c.article.id);
+    expect(ids).toContain(c1.article.id);
+    expect(ids).toContain(c2.article.id);
+
+    const single = (
+      await app.inject({ method: 'GET', url: `/api/articles/${c1.article.id}` })
+    ).json() as { riders: { key: string; name: string }[] };
+    expect(single.riders.map((r) => r.key).sort()).toEqual(['remco evenepoel', 'tadej pogacar']);
+  });
+});
+
 describe('GET /api/articles/:id', () => {
   it('returns full content and cluster alternates', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };

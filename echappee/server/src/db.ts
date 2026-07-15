@@ -48,9 +48,21 @@ CREATE TABLE IF NOT EXISTS articles (
   summary TEXT,
   cluster_id INTEGER REFERENCES clusters(id),
   enriched_at TEXT,
+  riders_at TEXT,
   read_at TEXT,
   UNIQUE(source_key, guid)
 );
+
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS riders_at TEXT;
+
+CREATE TABLE IF NOT EXISTS article_riders (
+  article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+  rider_key TEXT NOT NULL,
+  rider_name TEXT NOT NULL,
+  PRIMARY KEY (article_id, rider_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_riders_key ON article_riders(rider_key);
 
 CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles(cluster_id);
