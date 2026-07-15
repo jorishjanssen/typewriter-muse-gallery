@@ -167,6 +167,39 @@ describe('LLM model setting', () => {
     const reset = await app.inject({ method: 'PUT', url: '/api/settings/llm', payload: { model: '' } });
     expect(reset.json().custom).toBeNull();
   });
+
+  it('persists per-task overrides and feeds them to the pipeline', async () => {
+    const put = await app.inject({
+      method: 'PUT', url: '/api/settings/llm',
+      payload: { tasks: { merge: 'anthropic/claude-haiku-4.5' } },
+    });
+    expect(put.statusCode).toBe(200);
+    const body = put.json() as any;
+    expect(body.tasks.merge.override).toBe('anthropic/claude-haiku-4.5');
+    expect(body.tasks.merge.effective).toBe('anthropic/claude-haiku-4.5');
+    // No override → effective follows resolution (main model off-gateway in tests).
+    expect(body.tasks.guide.override).toBeNull();
+
+    const { refreshAll } = await import('../src/pipeline/refresh.js');
+    const { modelForTask } = await import('../src/llm.js');
+    await refreshAll(db, { extract: async () => ({ contentHtml: null, contentText: null, imageUrl: null, author: null }) });
+    expect(modelForTask('merge')).toBe('anthropic/claude-haiku-4.5');
+
+    const badTask = await app.inject({
+      method: 'PUT', url: '/api/settings/llm', payload: { tasks: { hack: 'x/y' } },
+    });
+    expect(badTask.statusCode).toBe(400);
+    const badModel = await app.inject({
+      method: 'PUT', url: '/api/settings/llm', payload: { tasks: { merge: 'nope; DROP TABLE' } },
+    });
+    expect(badModel.statusCode).toBe(400);
+
+    // Clearing restores automatic resolution.
+    const cleared = await app.inject({
+      method: 'PUT', url: '/api/settings/llm', payload: { tasks: { merge: '' } },
+    });
+    expect(cleared.json().tasks.merge.override).toBeNull();
+  });
 });
 
 describe('races', () => {

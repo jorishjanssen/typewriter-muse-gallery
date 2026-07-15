@@ -113,10 +113,14 @@ export interface SourceHealth {
   readPct: number | null;
 }
 
+export type LlmTask = 'enrich' | 'brief' | 'merge' | 'guide';
+
 export interface LlmModelSetting {
   model: string;
   defaultModel: string;
   custom: string | null;
+  /** Per-task override (null = automatic) and the model actually used. */
+  tasks: Record<LlmTask, { override: string | null; effective: string }>;
 }
 
 export interface Status {
@@ -156,6 +160,11 @@ export const api = {
   llmModel: () => request<LlmModelSetting>('/api/settings/llm'),
   setLlmModel: (model: string) =>
     request<LlmModelSetting>('/api/settings/llm', { method: 'PUT', body: JSON.stringify({ model }) }),
+  setLlmTaskModel: (task: LlmTask, model: string) =>
+    request<LlmModelSetting>('/api/settings/llm', {
+      method: 'PUT',
+      body: JSON.stringify({ tasks: { [task]: model } }),
+    }),
   article: (id: number | string) => request<FullArticle>(`/api/articles/${id}`),
   markRead: (id: number) => request(`/api/articles/${id}/read`, { method: 'POST' }),
   markUnread: (id: number) => request(`/api/articles/${id}/unread`, { method: 'POST' }),

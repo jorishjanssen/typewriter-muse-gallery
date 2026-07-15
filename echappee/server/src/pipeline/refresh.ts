@@ -1,7 +1,14 @@
 import { config, llmEnabled } from '../config.js';
 import { nowIso, type Db } from '../db.js';
 import { SOURCES, type SourceDef } from '../sources.js';
-import { enrichArticle, generateWatchGuide, riderKey, setLlmModel, type RaceRef } from '../llm.js';
+import {
+  enrichArticle,
+  generateWatchGuide,
+  riderKey,
+  setLlmModel,
+  setLlmTaskModels,
+  type RaceRef,
+} from '../llm.js';
 import { categorizeByKeywords } from './categorize.js';
 import { createCluster, matchClusterByTitle, recentClusters, touchCluster } from './cluster.js';
 import { extractArticle, htmlToText, sanitizeFragment, type Extracted } from './extract.js';
@@ -73,11 +80,18 @@ export async function refreshAll(
     return { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0, merged: 0, clusterBriefs: 0 };
   running = true;
   try {
-    // The UI-selected model (settings table) wins over env configuration.
-    const modelSetting = await db.query<{ value: string }>(
-      `SELECT value FROM settings WHERE key = 'llm_model'`
+    // The UI-selected models (settings table) win over env configuration.
+    const modelSettings = await db.query<{ key: string; value: string }>(
+      `SELECT key, value FROM settings WHERE key LIKE 'llm_model%'`
     );
-    setLlmModel(modelSetting[0]?.value ?? null);
+    const setting = (key: string) => modelSettings.find((r) => r.key === key)?.value ?? null;
+    setLlmModel(setting('llm_model'));
+    setLlmTaskModels({
+      enrich: setting('llm_model_enrich'),
+      brief: setting('llm_model_brief'),
+      merge: setting('llm_model_merge'),
+      guide: setting('llm_model_guide'),
+    });
 
     const stats: RefreshStats = {
       sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0, merged: 0, clusterBriefs: 0,

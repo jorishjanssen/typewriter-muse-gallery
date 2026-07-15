@@ -57,6 +57,45 @@ export function currentLlmModel(): string {
   return modelOverride ?? config.llm.model;
 }
 
+/**
+ * Per-task model split. Bulk labeling work (per-article enrichment, merged
+ * cluster briefs) defaults to a cheap model; judgement-heavy work (cluster
+ * merge verdicts, spoiler-free watch guides) defaults to the main model.
+ * Each task can be pinned to a specific model from Settings.
+ */
+export type LlmTask = 'enrich' | 'brief' | 'merge' | 'guide';
+export const LLM_TASKS: LlmTask[] = ['enrich', 'brief', 'merge', 'guide'];
+const BULK_TASKS: LlmTask[] = ['enrich', 'brief'];
+export const CHEAP_BULK_MODEL = 'deepseek/deepseek-v3.1';
+
+let taskOverrides: Partial<Record<LlmTask, string>> = {};
+
+export function setLlmTaskModels(
+  overrides: Partial<Record<LlmTask, string | null | undefined>>
+): void {
+  taskOverrides = {};
+  for (const task of LLM_TASKS) {
+    const value = overrides[task]?.trim();
+    if (value) taskOverrides[task] = value;
+  }
+}
+
+/** Pure resolution, exported for tests and the settings API. */
+export function resolveTaskModel(
+  task: LlmTask,
+  main: string,
+  override: string | null,
+  gateway: boolean = config.llm.gateway
+): string {
+  if (override) return override;
+  if (gateway && BULK_TASKS.includes(task)) return CHEAP_BULK_MODEL;
+  return main;
+}
+
+export function modelForTask(task: LlmTask): string {
+  return resolveTaskModel(task, currentLlmModel(), taskOverrides[task] ?? null);
+}
+
 function getClient(): OpenAI {
   if (!client) {
     client = new OpenAI({
@@ -108,7 +147,7 @@ export async function enrichArticle(input: {
 
   try {
     const res = await getClient().chat.completions.create({
-      model: currentLlmModel(),
+      model: modelForTask('enrich'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
@@ -226,7 +265,7 @@ export async function generateClusterBrief(
     .join('\n\n');
   try {
     const res = await getClient().chat.completions.create({
-      model: currentLlmModel(),
+      model: modelForTask('brief'),
       messages: [
         { role: 'system', content: CLUSTER_BRIEF_PROMPT },
         { role: 'user', content: `Write the brief in language: ${lang}\n\n${body}` },
@@ -286,7 +325,7 @@ export async function judgeClusterMerge(a: ClusterDigest, b: ClusterDigest): Pro
       .join('\n');
   try {
     const res = await getClient().chat.completions.create({
-      model: currentLlmModel(),
+      model: modelForTask('merge'),
       messages: [
         { role: 'system', content: MERGE_PROMPT },
         { role: 'user', content: `${render('A', a)}\n\n${render('B', b)}` },
@@ -344,7 +383,7 @@ export async function generateWatchGuide(
     .join('\n\n');
   try {
     const res = await getClient().chat.completions.create({
-      model: currentLlmModel(),
+      model: modelForTask('guide'),
       messages: [
         { role: 'system', content: GUIDE_PROMPT },
         { role: 'user', content: `Race day: ${raceLabel}\n\n${body}` },

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { nowIso, type Db } from '../db.js';
 import { SOURCES } from '../sources.js';
 import { config, llmEnabled } from '../config.js';
+import { LLM_TASKS, resolveTaskModel, type LlmTask } from '../llm.js';
 import { refreshAll } from '../pipeline/refresh.js';
 
 interface ArticleRow {
@@ -416,7 +417,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     });
   });
 
-  // ---- LLM model setting ------------------------------------------------------
+  // ---- LLM model settings -----------------------------------------------------
   const getModelSetting = async (): Promise<string | null> => {
     const rows = await db.query<{ value: string }>(
       `SELECT value FROM settings WHERE key = 'llm_model'`
@@ -424,32 +425,56 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     return rows[0]?.value ?? null;
   };
 
-  app.get('/api/settings/llm', async () => {
-    const custom = await getModelSetting();
-    return {
-      model: custom ?? config.llm.model,
-      defaultModel: config.llm.model,
-      custom,
-    };
-  });
+  const llmSettingsPayload = async () => {
+    const rows = await db.query<{ key: string; value: string }>(
+      `SELECT key, value FROM settings WHERE key LIKE 'llm_model%'`
+    );
+    const setting = (key: string) => rows.find((r) => r.key === key)?.value ?? null;
+    const custom = setting('llm_model');
+    const main = custom ?? config.llm.model;
+    const tasks = Object.fromEntries(
+      LLM_TASKS.map((task) => {
+        const override = setting(`llm_model_${task}`);
+        return [task, { override, effective: resolveTaskModel(task, main, override) }];
+      })
+    );
+    return { model: main, defaultModel: config.llm.model, custom, tasks };
+  };
 
-  app.put<{ Body: { model?: string } }>('/api/settings/llm', async (req, reply) => {
-    const model = (req.body?.model ?? '').trim();
-    if (model.length > 100 || (model && !/^[\w./:-]+$/.test(model))) {
-      return reply.code(400).send({ error: 'invalid model id' });
-    }
-    if (model) {
+  app.get('/api/settings/llm', async () => llmSettingsPayload());
+
+  const validModel = (m: string) => m.length <= 100 && /^[\w./:-]+$/.test(m);
+  const saveSetting = async (key: string, value: string) => {
+    if (value) {
       await db.query(
-        `INSERT INTO settings (key, value) VALUES ('llm_model', $1)
+        `INSERT INTO settings (key, value) VALUES ($1, $2)
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-        [model]
+        [key, value]
       );
     } else {
-      await db.query(`DELETE FROM settings WHERE key = 'llm_model'`);
+      await db.query('DELETE FROM settings WHERE key = $1', [key]);
     }
-    const custom = await getModelSetting();
-    return { model: custom ?? config.llm.model, defaultModel: config.llm.model, custom };
-  });
+  };
+
+  app.put<{ Body: { model?: string; tasks?: Record<string, string> } }>(
+    '/api/settings/llm',
+    async (req, reply) => {
+      if (req.body?.model !== undefined) {
+        const model = (req.body.model ?? '').trim();
+        if (model && !validModel(model)) return reply.code(400).send({ error: 'invalid model id' });
+        await saveSetting('llm_model', model);
+      }
+      for (const [task, value] of Object.entries(req.body?.tasks ?? {})) {
+        if (!LLM_TASKS.includes(task as LlmTask)) {
+          return reply.code(400).send({ error: `unknown task: ${task}` });
+        }
+        const model = (value ?? '').trim();
+        if (model && !validModel(model)) return reply.code(400).send({ error: 'invalid model id' });
+        await saveSetting(`llm_model_${task}`, model);
+      }
+      return llmSettingsPayload();
+    }
+  );
 
   // ---- Status + manual refresh ----------------------------------------------
   app.get('/api/status', async () => {

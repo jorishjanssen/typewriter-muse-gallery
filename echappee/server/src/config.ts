@@ -19,6 +19,9 @@ function resolveLlmConfig() {
       (useGateway ? 'https://ai-gateway.vercel.sh/v1' : 'https://api.deepseek.com'),
     apiKey: directKey ?? gatewayKey ?? '',
     model: env('LLM_MODEL') ?? (useGateway ? 'deepseek/deepseek-v3.1' : 'deepseek-chat'),
+    // Gateway model slugs are portable across providers; per-task cheap
+    // defaults only apply there.
+    gateway: useGateway,
   };
 }
 
