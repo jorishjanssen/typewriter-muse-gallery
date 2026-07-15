@@ -114,10 +114,16 @@ export async function enrichArticle(input: {
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.1,
-      max_tokens: 400,
+      // Generous cap: reasoning models (e.g. DeepSeek V4 Pro) spend tokens
+      // thinking before the JSON; a tight cap yields empty content.
+      max_tokens: 2000,
     });
     const raw = res.choices[0]?.message?.content ?? '';
-    return parseEnrichment(raw, input.candidateClusters.length);
+    const parsed = parseEnrichment(raw, input.candidateClusters.length);
+    if (!parsed) {
+      console.error(`[llm] enrichment unparseable (${raw.length} chars): ${raw.slice(0, 120)}`);
+    }
+    return parsed;
   } catch (err) {
     console.error('[llm] enrichment failed:', (err as Error).message);
     return null;
@@ -226,9 +232,15 @@ export async function generateClusterBrief(
         { role: 'user', content: `Write the brief in language: ${lang}\n\n${body}` },
       ],
       temperature: 0.2,
-      max_tokens: 250,
+      // Headroom for reasoning models; the brief itself stays <=360 chars.
+      max_tokens: 1500,
     });
-    return parseClusterBrief(res.choices[0]?.message?.content ?? '');
+    const raw = res.choices[0]?.message?.content ?? '';
+    const brief = parseClusterBrief(raw);
+    if (!brief) {
+      console.error(`[llm] cluster brief unparseable (${raw.length} chars): ${raw.slice(0, 120)}`);
+    }
+    return brief;
   } catch (err) {
     console.error('[llm] cluster brief failed:', (err as Error).message);
     return null;
@@ -280,9 +292,15 @@ export async function judgeClusterMerge(a: ClusterDigest, b: ClusterDigest): Pro
         { role: 'user', content: `${render('A', a)}\n\n${render('B', b)}` },
       ],
       temperature: 0,
-      max_tokens: 20,
+      // The JSON is tiny but reasoning models think first — leave headroom.
+      max_tokens: 1500,
     });
-    return parseMergeVerdict(res.choices[0]?.message?.content ?? '');
+    const raw = res.choices[0]?.message?.content ?? '';
+    const verdict = parseMergeVerdict(raw);
+    if (verdict === null) {
+      console.error(`[llm] merge verdict unparseable (${raw.length} chars): ${raw.slice(0, 120)}`);
+    }
+    return verdict;
   } catch (err) {
     console.error('[llm] merge judgement failed:', (err as Error).message);
     return null;
@@ -332,9 +350,15 @@ export async function generateWatchGuide(
         { role: 'user', content: `Race day: ${raceLabel}\n\n${body}` },
       ],
       temperature: 0.2,
-      max_tokens: 500,
+      // Headroom for reasoning models to think before the JSON.
+      max_tokens: 2000,
     });
-    return parseWatchGuide(res.choices[0]?.message?.content ?? '');
+    const raw = res.choices[0]?.message?.content ?? '';
+    const guide = parseWatchGuide(raw);
+    if (!guide) {
+      console.error(`[llm] watch guide unparseable (${raw.length} chars): ${raw.slice(0, 120)}`);
+    }
+    return guide;
   } catch (err) {
     console.error('[llm] watch guide failed:', (err as Error).message);
     return null;
