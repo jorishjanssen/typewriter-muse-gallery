@@ -161,6 +161,24 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     return { ok: true };
   });
 
+  // Cluster-level read state: a feed card represents a whole story, so
+  // swiping it away must cover the alternates too — otherwise the story
+  // reappears via its other sources in the unread view.
+  app.post<{ Params: { id: string } }>('/api/clusters/:id/read', async (req) => {
+    await db.query('UPDATE articles SET read_at = $1 WHERE cluster_id = $2 AND read_at IS NULL', [
+      nowIso(),
+      Number(req.params.id),
+    ]);
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/clusters/:id/unread', async (req) => {
+    await db.query('UPDATE articles SET read_at = NULL WHERE cluster_id = $1', [
+      Number(req.params.id),
+    ]);
+    return { ok: true };
+  });
+
   app.post('/api/read-all', async () => {
     await db.query('UPDATE articles SET read_at = $1 WHERE read_at IS NULL', [nowIso()]);
     return { ok: true };
