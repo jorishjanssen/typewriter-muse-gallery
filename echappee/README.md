@@ -76,8 +76,10 @@ title-similarity fallback does the clustering.
 Defined in `server/src/sources.ts` — add an entry (name, feed URLs, language,
 default category) and restart. Multiple candidate feed URLs per source are
 tried until one works; per-source scrape health is visible under Settings.
-v1 ships with: Cyclingnews, Velo, Cycling Weekly, BikeRadar, WielerFlits,
-Sporza Wielrennen. Paywalled sites are deliberately excluded.
+Current sources: Cyclingnews, Velo, Cycling Weekly, road.cc, Bikerumor,
+WielerFlits, Sporza Wielrennen, IDL ProCycling, NOS Wielrennen, Wieler Revue,
+HLN Wielrennen. (BikeRadar retired: bot-blocked.) Paywalled sites are
+deliberately excluded.
 
 Scraping is polite: RSS-first, only new items fetched, 2s delay between
 article fetches per host, honest User-Agent, ~25 items max per source per run.
