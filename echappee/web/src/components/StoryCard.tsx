@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CATEGORY_LABELS, timeAgo, type FeedCard } from '../lib/api';
 import SwipeToRead from './SwipeToRead';
@@ -18,11 +19,16 @@ export default function StoryCard({
   onToggleRead: (card: FeedCard) => void;
 }) {
   const a = card.article;
+  const grouped = card.alternates.length > 0;
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>
       <article
-        className={`py-4 border-b border-ink/10 dark:border-snow/10 transition-opacity ${
-          card.read ? 'opacity-45' : ''
+        className={`transition-opacity ${card.read ? 'opacity-45' : ''} ${
+          grouped
+            ? 'my-3 rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10 px-4 py-4'
+            : 'py-4 border-b border-ink/10 dark:border-snow/10'
         }`}
       >
         <Link to={`/article/${a.id}`} className="block group">
@@ -46,9 +52,7 @@ export default function StoryCard({
             >
               <span
                 className={`block h-3 w-3 rounded-full transition-colors ${
-                  card.read
-                    ? 'border-2 border-ink/25 dark:border-snow/25'
-                    : 'bg-accent'
+                  card.read ? 'border-2 border-ink/25 dark:border-snow/25' : 'bg-accent'
                 }`}
               />
             </button>
@@ -74,19 +78,47 @@ export default function StoryCard({
             )}
           </div>
         </Link>
-        {card.alternates.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="opacity-50">also on</span>
-            {card.alternates.map((alt) => (
-              <Link
-                key={alt.id}
-                to={`/article/${alt.id}`}
-                className="rounded-full border border-ink/15 dark:border-snow/20 px-2 py-0.5 opacity-70 hover:opacity-100 hover:border-accent hover:text-accent transition-colors"
+
+        {grouped && (
+          <>
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className="mt-3 flex w-full items-center gap-1.5 text-xs"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-accent shrink-0">
+                <path d="M12 2 2 7l10 5 10-5-10-5zM2 12l10 5 10-5M2 17l10 5 10-5" />
+              </svg>
+              <span className="font-semibold text-accent">
+                {card.alternates.length + 1} sources
+              </span>
+              <span className="opacity-60 truncate">
+                · {card.alternates.map((alt) => alt.sourceName).join(' · ')}
+              </span>
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"
+                className={`ml-auto shrink-0 opacity-50 transition-transform ${expanded ? 'rotate-180' : ''}`}
               >
-                {alt.sourceName}
-              </Link>
-            ))}
-          </div>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            {expanded && (
+              <ul className="mt-2.5 space-y-2.5 border-l-2 border-accent/30 pl-3">
+                {card.alternates.map((alt) => (
+                  <li key={alt.id}>
+                    <Link to={`/article/${alt.id}`} className="block group/alt">
+                      <span className="text-xs opacity-60">
+                        {alt.sourceName} · {timeAgo(alt.publishedAt)}
+                      </span>
+                      <span className="block text-sm font-serif font-semibold leading-snug group-hover/alt:text-accent transition-colors">
+                        {alt.title}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </article>
     </SwipeToRead>
