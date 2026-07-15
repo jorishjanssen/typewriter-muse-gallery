@@ -96,12 +96,21 @@ describe('sanitizeFragment', () => {
 describe('parseEnrichment', () => {
   it('parses clean and fenced JSON, clamping bad cluster indices', () => {
     const clean = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":0}', 2);
-    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [], brief: null, race: null });
+    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [], brief: null, race: null, importance: 2 });
 
     const fenced = parseEnrichment('```json\n{"summary":"S.","category":"nonsense","cluster_match":9}\n```', 2);
-    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [], brief: null, race: null });
+    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [], brief: null, race: null, importance: 2 });
 
     expect(parseEnrichment('no json here', 0)).toBeNull();
+  });
+
+  it('clamps importance to 1-5 and defaults to 2', () => {
+    const high = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":null,"importance":9}', 0);
+    expect(high?.importance).toBe(5);
+    const low = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":null,"importance":0}', 0);
+    expect(low?.importance).toBe(1);
+    const junk = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":null,"importance":"big"}', 0);
+    expect(junk?.importance).toBe(2);
   });
 
   it('keeps a valid brief and drops junk ones', () => {

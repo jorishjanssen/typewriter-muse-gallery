@@ -33,7 +33,7 @@ export default function Reader() {
   const a = article.data;
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="min-h-screen pb-24">
       <TopBar
         right={
           <IconButton label="Back to feed" onClick={() => navigate(-1)}>

@@ -198,6 +198,37 @@ describe('races', () => {
   });
 });
 
+describe('GET /api/catchup', () => {
+  it('surfaces high-importance unread clusters and counts the rest', async () => {
+    // Known state: everything unread, importance set explicitly.
+    await db.query('UPDATE articles SET read_at = NULL', []);
+    await db.query("UPDATE articles SET importance = 5 WHERE guid = 'g1'", []);
+    await db.query("UPDATE articles SET importance = 1 WHERE guid IN ('g2', 'g3')", []);
+
+    const body = (await app.inject({ method: 'GET', url: '/api/catchup' })).json() as {
+      unreadStories: number;
+      big: { clusterId: number; score: number; sources: number; article: any }[];
+      oldestUnread: string | null;
+    };
+    // g1+g2 cluster together; g3 stands alone.
+    expect(body.unreadStories).toBe(2);
+    expect(body.big).toHaveLength(1);
+    expect(body.big[0].score).toBe(5);
+    expect(body.big[0].sources).toBe(2);
+    expect(body.big[0].article.url).toBe('https://example.com/g1');
+    expect(body.big[0].article.importance).toBe(5);
+    expect(body.oldestUnread).toBe('2026-07-14T07:00:00.000Z');
+
+    // Nothing unread → empty digest.
+    await db.query('UPDATE articles SET read_at = $1', [new Date().toISOString()]);
+    const empty = (await app.inject({ method: 'GET', url: '/api/catchup' })).json() as any;
+    expect(empty.unreadStories).toBe(0);
+    expect(empty.big).toHaveLength(0);
+    expect(empty.oldestUnread).toBeNull();
+    await db.query('UPDATE articles SET read_at = NULL', []);
+  });
+});
+
 describe('GET /api/articles/:id', () => {
   it('returns full content and cluster alternates', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };

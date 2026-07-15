@@ -19,6 +19,7 @@ interface ArticleRow {
   category: string;
   summary: string | null;
   brief: string | null;
+  importance: number | null;
   cluster_id: number;
   read_at: string | null;
 }
@@ -48,6 +49,7 @@ function articleCard(row: ArticleRow) {
     category: row.category,
     summary: row.summary,
     brief: row.brief,
+    importance: row.importance ?? 2,
     hasFullText: (row.content_len ?? 0) > 200,
     // ~6 chars/word, 220 wpm.
     readingMinutes:
@@ -60,7 +62,7 @@ function articleCard(row: ArticleRow) {
 // full article bodies for 100+ rows per request dominated response time.
 const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt,
                 LENGTH(content_text) AS content_len,
-                image_url, lang, category, summary, brief, cluster_id, read_at`;
+                image_url, lang, category, summary, brief, importance, cluster_id, read_at`;
 
 export function registerApi(app: FastifyInstance, db: Db): void {
   // ---- Feed: newest clusters, one card each --------------------------------
@@ -188,6 +190,35 @@ export function registerApi(app: FastifyInstance, db: Db): void {
        ORDER BY articles DESC, name ASC
        LIMIT 300`
     );
+  });
+
+  // ---- Catch-up digest: triage the unread pile in one glance -----------------
+  app.get('/api/catchup', async () => {
+    const rows = await db.query<ArticleRow>(
+      `SELECT ${ARTICLE_COLS} FROM articles WHERE read_at IS NULL
+       ORDER BY published_at DESC LIMIT 300`
+    );
+    const clusters = new Map<number, ArticleRow[]>();
+    for (const row of rows) {
+      const group = clusters.get(row.cluster_id);
+      if (group) group.push(row);
+      else clusters.set(row.cluster_id, [row]);
+    }
+    const scored = [...clusters.values()].map((group) => {
+      const best = [...group].sort(
+        (a, b) => (b.content_len ?? 0) - (a.content_len ?? 0)
+      )[0];
+      const maxImportance = Math.max(...group.map((a) => a.importance ?? 2));
+      // Multi-source coverage is itself an importance signal.
+      const score = Math.min(5, maxImportance + (group.length >= 3 ? 1 : 0));
+      return { clusterId: best.cluster_id, score, sources: group.length, article: articleCard(best) };
+    });
+    const big = scored
+      .filter((c) => c.score >= 4)
+      .sort((a, b) => b.score - a.score || b.article.publishedAt.localeCompare(a.article.publishedAt))
+      .slice(0, 5);
+    const oldest = rows.length ? rows[rows.length - 1].published_at : null;
+    return { unreadStories: clusters.size, big, oldestUnread: oldest };
   });
 
   // ---- Races (spoiler-safe: no article data in these responses) --------------

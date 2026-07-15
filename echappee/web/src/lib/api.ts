@@ -16,6 +16,7 @@ export interface ArticleCard {
   brief: string | null;
   hasFullText: boolean;
   readingMinutes: number | null;
+  importance: number;
   read: boolean;
 }
 
@@ -70,6 +71,12 @@ export interface RaceDetail {
   articleCount: number;
   guide: { excitement: number; summary: string; tiers: WatchGuideTier[] } | null;
   guideGeneratedAt: string | null;
+}
+
+export interface CatchUp {
+  unreadStories: number;
+  big: { clusterId: number; score: number; sources: number; article: ArticleCard }[];
+  oldestUnread: string | null;
 }
 
 export interface Mute {
@@ -128,6 +135,7 @@ export const api = {
   },
   riders: () => request<Rider[]>('/api/riders'),
   races: () => request<RaceRow[]>('/api/races'),
+  catchup: () => request<CatchUp>('/api/catchup'),
   race: (id: number | string) => request<RaceDetail>(`/api/races/${id}`),
   llmModel: () => request<LlmModelSetting>('/api/settings/llm'),
   setLlmModel: (model: string) =>

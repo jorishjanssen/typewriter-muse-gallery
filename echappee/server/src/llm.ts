@@ -13,6 +13,8 @@ export interface Enrichment {
   brief: string | null;
   /** Specific race day this article is about, or null. */
   race: RaceRef | null;
+  /** How significant this news is for a cycling fan (1-5). */
+  importance: number;
 }
 
 export interface RaceRef {
@@ -73,13 +75,15 @@ Given one article and a list of recent story clusters, respond with ONLY a JSON 
   "cluster_match": <index of the cluster covering the SAME news event, or null>,
   "riders": ["Full official rider name", ...],
   "brief": "standalone news brief",
-  "race": {"name": "Race name without year", "year": 2026, "stage": <stage number or null>, "date": "YYYY-MM-DD or null", "kind": "report" | "preview" | "other"} | null
+  "race": {"name": "Race name without year", "year": 2026, "stage": <stage number or null>, "date": "YYYY-MM-DD or null", "kind": "report" | "preview" | "other"} | null,
+  "importance": <1-5>
 }
 Category guide: racing = race reports/previews/results; transfers = contracts, team moves, rider career news, injuries; gear = bikes, components, products, tech; offroad = gravel/MTB/cyclocross/track; other = everything else.
 cluster_match must only be set when the article covers the same concrete news event as the cluster, not merely the same topic.
 riders: at most 3, ONLY the riders the article is mainly about — not everyone mentioned. Use the full official name with correct diacritics (e.g. "Tadej Pogačar", "Mathieu van der Poel"). [] when the article is not about specific riders.
 brief: the news itself as one punchy standalone post of AT MOST 360 characters, in the SAME language as the article. Lead with what happened; no hashtags, no "the article says".
-race: ONLY when the article is about one specific race day (a stage or a one-day race). kind: report = describes how the race unfolded / its result; preview = published before the race; other = stage-related news that is neither. null when not about a specific race day.`;
+race: ONLY when the article is about one specific race day (a stage or a one-day race). kind: report = describes how the race unfolded / its result; preview = published before the race; other = stage-related news that is neither. null when not about a specific race day.
+importance: 5 = major news every cycling fan must see (grand tour stage results, big-name transfers or crashes); 4 = significant; 3 = notable; 2 = routine; 1 = minor/filler (TV listings, promos, minor interviews).`;
 
 export async function enrichArticle(input: {
   title: string;
@@ -132,6 +136,7 @@ export function parseEnrichment(raw: string, clusterCount: number): Enrichment |
       riders?: unknown;
       brief?: unknown;
       race?: unknown;
+      importance?: unknown;
     };
     const summary = typeof obj.summary === 'string' ? obj.summary.trim() : '';
     const category = CATEGORIES.includes(obj.category as Category)
@@ -179,8 +184,12 @@ export function parseEnrichment(raw: string, clusterCount: number): Enrichment |
         };
       }
     }
+    const importance =
+      typeof obj.importance === 'number'
+        ? Math.min(5, Math.max(1, Math.round(obj.importance)))
+        : 2;
     if (!summary) return null;
-    return { summary, category, clusterMatch, riders, brief, race };
+    return { summary, category, clusterMatch, riders, brief, race, importance };
   } catch {
     return null;
   }

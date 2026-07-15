@@ -29,7 +29,7 @@ export default function RaceStage() {
   const cards = feed.data?.pages.flatMap((p) => p.cards) ?? [];
 
   return (
-    <div className="min-h-screen pb-16">
+    <div className="min-h-screen pb-24">
       <TopBar
         right={
           <IconButton label="Back to races" to="/races">
