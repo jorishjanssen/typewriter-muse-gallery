@@ -12,6 +12,9 @@ on:
       article_id:
         description: Article id to test the single-article path with
         default: '5'
+      llm_models:
+        description: Comma-separated model slugs to ping (empty = configured default)
+        default: ''
 
 jobs:
   debug:
@@ -62,7 +65,7 @@ jobs:
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.ECHAPPEE_AI_GATEWAY_API_KEY }}
           LLM_API_KEY: ${{ secrets.ECHAPPEE_LLM_API_KEY }}
-          LLM_MODEL: ${{ vars.ECHAPPEE_LLM_MODEL }}
+          LLM_MODELS: ${{ inputs.llm_models || vars.ECHAPPEE_LLM_MODEL }}
         run: |
           node --input-type=module -e "
           import OpenAI from 'openai';
@@ -70,13 +73,16 @@ jobs:
           const direct = (process.env.LLM_API_KEY ?? '').trim();
           if (!gw && !direct) { console.log('LLM: no key configured'); process.exit(0); }
           const base = direct ? 'https://api.deepseek.com' : 'https://ai-gateway.vercel.sh/v1';
-          const model = (process.env.LLM_MODEL ?? '').trim() || (direct ? 'deepseek-chat' : 'deepseek/deepseek-v3.1');
+          const models = (process.env.LLM_MODELS ?? '').split(',').map(m => m.trim()).filter(Boolean);
+          if (!models.length) models.push(direct ? 'deepseek-chat' : 'deepseek/deepseek-v3.1');
           const client = new OpenAI({ baseURL: base, apiKey: direct || gw });
-          try {
-            const res = await client.chat.completions.create({ model, messages: [{ role: 'user', content: 'Reply with exactly: OK' }], max_tokens: 5 });
-            console.log('LLM ping ok — model:', model, 'reply:', JSON.stringify(res.choices[0]?.message?.content));
-          } catch (e) {
-            console.log('LLM ping FAILED — model:', model, 'status:', e.status ?? 'n/a', 'error:', e.message);
+          for (const model of models) {
+            try {
+              const res = await client.chat.completions.create({ model, messages: [{ role: 'user', content: 'Reply with exactly: OK' }], max_tokens: 5 });
+              console.log('LLM ping ok — model:', model, 'reply:', JSON.stringify(res.choices[0]?.message?.content));
+            } catch (e) {
+              console.log('LLM ping FAILED — model:', model, 'status:', e.status ?? 'n/a', 'error:', String(e.message).slice(0, 300));
+            }
           }
           process.exit(0);
           "
