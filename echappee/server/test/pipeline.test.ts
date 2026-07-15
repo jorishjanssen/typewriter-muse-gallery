@@ -96,12 +96,22 @@ describe('sanitizeFragment', () => {
 describe('parseEnrichment', () => {
   it('parses clean and fenced JSON, clamping bad cluster indices', () => {
     const clean = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":0}', 2);
-    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [] });
+    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [], brief: null });
 
     const fenced = parseEnrichment('```json\n{"summary":"S.","category":"nonsense","cluster_match":9}\n```', 2);
-    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [] });
+    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [], brief: null });
 
     expect(parseEnrichment('no json here', 0)).toBeNull();
+  });
+
+  it('keeps a valid brief and drops junk ones', () => {
+    const ok = parseEnrichment(
+      '{"summary":"S.","category":"racing","cluster_match":null,"brief":"Pogacar wint de Waalse Pijl na een solo van 400 meter op de Muur van Hoei."}',
+      0
+    );
+    expect(ok?.brief).toContain('Waalse Pijl');
+    const junk = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":null,"brief":"too short"}', 0);
+    expect(junk?.brief).toBeNull();
   });
 
   it('validates and caps riders', () => {

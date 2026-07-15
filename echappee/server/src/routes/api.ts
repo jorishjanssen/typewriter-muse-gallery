@@ -18,6 +18,7 @@ interface ArticleRow {
   lang: string;
   category: string;
   summary: string | null;
+  brief: string | null;
   cluster_id: number;
   read_at: string | null;
 }
@@ -46,6 +47,7 @@ function articleCard(row: ArticleRow) {
     lang: row.lang,
     category: row.category,
     summary: row.summary,
+    brief: row.brief,
     hasFullText: (row.content_len ?? 0) > 200,
     // ~6 chars/word, 220 wpm.
     readingMinutes:
@@ -58,7 +60,7 @@ function articleCard(row: ArticleRow) {
 // full article bodies for 100+ rows per request dominated response time.
 const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt,
                 LENGTH(content_text) AS content_len,
-                image_url, lang, category, summary, cluster_id, read_at`;
+                image_url, lang, category, summary, brief, cluster_id, read_at`;
 
 export function registerApi(app: FastifyInstance, db: Db): void {
   // ---- Feed: newest clusters, one card each --------------------------------

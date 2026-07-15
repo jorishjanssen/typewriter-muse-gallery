@@ -1,5 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import BriefCard from '../components/BriefCard';
 import PullToRefresh from '../components/PullToRefresh';
 import { SkeletonFeed } from '../components/Skeleton';
 import StoryCard from '../components/StoryCard';
@@ -9,11 +10,15 @@ import { useToggleRead } from '../lib/useToggleRead';
 
 const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 'offroad', 'other'];
 const SHOW_READ_KEY = 'echappee-show-read';
+const VIEW_KEY = 'echappee-view';
 
 export default function Feed() {
   const [category, setCategory] = useState<Category | 'all'>('all');
   // Unread is the default view; the preference is remembered per device.
   const [showRead, setShowRead] = useState(() => localStorage.getItem(SHOW_READ_KEY) === '1');
+  const [view, setView] = useState<'cards' | 'briefs'>(() =>
+    localStorage.getItem(VIEW_KEY) === 'briefs' ? 'briefs' : 'cards'
+  );
   const [undo, setUndo] = useState<{ clusterId: number; title: string } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
@@ -21,6 +26,10 @@ export default function Feed() {
   useEffect(() => {
     localStorage.setItem(SHOW_READ_KEY, showRead ? '1' : '0');
   }, [showRead]);
+
+  useEffect(() => {
+    localStorage.setItem(VIEW_KEY, view);
+  }, [view]);
 
   const status = useQuery({ queryKey: ['status'], queryFn: api.status, refetchInterval: 60_000 });
 
@@ -93,6 +102,19 @@ export default function Feed() {
       <PullToRefresh onRefresh={handleRefresh}>
       <div className="mx-auto max-w-2xl px-4">
         <div className="flex gap-2 overflow-x-auto py-3 -mx-4 px-4 scrollbar-none">
+          <div className="flex shrink-0 rounded-full border border-ink/15 dark:border-snow/20 p-0.5">
+            {(['cards', 'briefs'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
+                  view === v ? 'bg-ink text-paper dark:bg-snow dark:text-night' : 'opacity-60'
+                }`}
+              >
+                {v === 'cards' ? 'Articles' : 'Briefs'}
+              </button>
+            ))}
+          </div>
           {CHIP_ORDER.map((c) => (
             <button
               key={c}
@@ -137,13 +159,21 @@ export default function Feed() {
           </div>
         )}
 
-        {cards.map((card) => (
-          <StoryCard
-            key={card.clusterId + '-' + card.article.id}
-            card={card}
-            onToggleRead={handleToggleRead}
-          />
-        ))}
+        {cards.map((card) =>
+          view === 'briefs' ? (
+            <BriefCard
+              key={card.clusterId + '-' + card.article.id}
+              card={card}
+              onToggleRead={handleToggleRead}
+            />
+          ) : (
+            <StoryCard
+              key={card.clusterId + '-' + card.article.id}
+              card={card}
+              onToggleRead={handleToggleRead}
+            />
+          )
+        )}
 
         {feed.hasNextPage && (
           <button

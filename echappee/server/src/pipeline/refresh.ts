@@ -206,6 +206,7 @@ export async function ingestArticle(
   let category = categorizeByKeywords(item.title, text, source.defaultCategory);
   let clusterId: number | null = null;
   let riders: string[] | null = null;
+  let brief: string | null = null;
 
   if (llmEnabled()) {
     const enrichment = await enrichArticle({
@@ -218,6 +219,7 @@ export async function ingestArticle(
       summary = enrichment.summary;
       category = enrichment.category;
       riders = enrichment.riders;
+      brief = enrichment.brief;
       if (enrichment.clusterMatch !== null) clusterId = candidates[enrichment.clusterMatch].id;
     }
   }
@@ -229,8 +231,8 @@ export async function ingestArticle(
   const rows = await db.query<{ id: number }>(
     `INSERT INTO articles
        (source_key, guid, url, title, author, published_at, fetched_at, excerpt, content_html,
-        content_text, image_url, lang, category, summary, cluster_id, enriched_at, riders_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        content_text, image_url, lang, category, summary, cluster_id, enriched_at, riders_at, brief)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
      ON CONFLICT (source_key, guid) DO NOTHING
      RETURNING id`,
     [
@@ -251,6 +253,7 @@ export async function ingestArticle(
       clusterId,
       summary ? nowIso() : null,
       riders !== null ? nowIso() : null,
+      brief,
     ]
   );
   const id = rows[0]?.id ?? 0;
@@ -266,7 +269,7 @@ export async function ingestArticle(
 async function backfillEnrichment(db: Db, limit = 25): Promise<number> {
   const rows = await db.query<{ id: number; title: string; content_text: string | null; lang: string }>(
     `SELECT id, title, content_text, lang FROM articles
-     WHERE riders_at IS NULL ORDER BY published_at DESC LIMIT $1`,
+     WHERE riders_at IS NULL OR brief IS NULL ORDER BY published_at DESC LIMIT $1`,
     [limit]
   );
   let done = 0;
@@ -280,9 +283,9 @@ async function backfillEnrichment(db: Db, limit = 25): Promise<number> {
     if (!enrichment) continue;
     await db.query(
       `UPDATE articles SET summary = COALESCE(summary, $1), category = $2,
-         enriched_at = COALESCE(enriched_at, $3), riders_at = $3
-       WHERE id = $4`,
-      [enrichment.summary, enrichment.category, nowIso(), row.id]
+         enriched_at = COALESCE(enriched_at, $3), riders_at = $3, brief = COALESCE(brief, $4)
+       WHERE id = $5`,
+      [enrichment.summary, enrichment.category, nowIso(), enrichment.brief, row.id]
     );
     await saveRiders(db, row.id, enrichment.riders);
     done++;
