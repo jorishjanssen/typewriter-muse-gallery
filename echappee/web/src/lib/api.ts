@@ -105,6 +105,12 @@ export interface SourceHealth {
   lastOkAt: string | null;
   lastError: string | null;
   articlesTotal: number;
+  /** Articles actually opened in the reader. */
+  opened: number;
+  /** Articles dismissed (scrolled past / swiped) without opening. */
+  skipped: number;
+  /** opened / (opened + skipped), or null before any triage. */
+  readPct: number | null;
 }
 
 export interface LlmModelSetting {

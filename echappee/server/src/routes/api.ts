@@ -305,32 +305,45 @@ export function registerApi(app: FastifyInstance, db: Db): void {
   });
 
   // ---- Read state -----------------------------------------------------------
+  // Engagement is tracked alongside: this endpoint fires when the reader
+  // opens an article, so it also stamps opened_at ("actually read").
   app.post<{ Params: { id: string } }>('/api/articles/:id/read', async (req) => {
-    await db.query('UPDATE articles SET read_at = $1 WHERE id = $2 AND read_at IS NULL', [
-      nowIso(),
-      Number(req.params.id),
-    ]);
+    const now = nowIso();
+    await db.query(
+      `UPDATE articles SET read_at = COALESCE(read_at, $1), opened_at = COALESCE(opened_at, $1)
+       WHERE id = $2`,
+      [now, Number(req.params.id)]
+    );
     return { ok: true };
   });
 
+  // "Keep unread" retracts the read state but not the fact it was opened.
   app.post<{ Params: { id: string } }>('/api/articles/:id/unread', async (req) => {
-    await db.query('UPDATE articles SET read_at = NULL WHERE id = $1', [Number(req.params.id)]);
+    await db.query('UPDATE articles SET read_at = NULL, seen_at = NULL WHERE id = $1', [
+      Number(req.params.id),
+    ]);
     return { ok: true };
   });
 
   // Cluster-level read state: a feed card represents a whole story, so
   // swiping it away must cover the alternates too — otherwise the story
-  // reappears via its other sources in the unread view.
+  // reappears via its other sources in the unread view. This is the
+  // triage path (swipe / scroll-past / action sheet), so it also stamps
+  // seen_at ("dismissed without opening") on articles not opened before.
   app.post<{ Params: { id: string } }>('/api/clusters/:id/read', async (req) => {
-    await db.query('UPDATE articles SET read_at = $1 WHERE cluster_id = $2 AND read_at IS NULL', [
-      nowIso(),
-      Number(req.params.id),
-    ]);
+    const now = nowIso();
+    await db.query(
+      `UPDATE articles SET read_at = COALESCE(read_at, $1),
+         seen_at = CASE WHEN opened_at IS NULL THEN COALESCE(seen_at, $1) ELSE seen_at END
+       WHERE cluster_id = $2`,
+      [now, Number(req.params.id)]
+    );
     return { ok: true };
   });
 
+  // Undo: retract both the read state and the skip judgment.
   app.post<{ Params: { id: string } }>('/api/clusters/:id/unread', async (req) => {
-    await db.query('UPDATE articles SET read_at = NULL WHERE cluster_id = $1', [
+    await db.query('UPDATE articles SET read_at = NULL, seen_at = NULL WHERE cluster_id = $1', [
       Number(req.params.id),
     ]);
     return { ok: true };
@@ -371,8 +384,20 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       last_error: string | null;
       articles_total: number;
     }>('SELECT * FROM source_state');
+    // Engagement per source: of the articles you triaged (opened or
+    // dismissed), how many did you actually open? Bulk "mark all read"
+    // stamps neither, so it doesn't skew the rate.
+    const engagement = await db.query<{ source_key: string; opened: number; skipped: number }>(
+      `SELECT source_key,
+              SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END)::int AS opened,
+              SUM(CASE WHEN opened_at IS NULL AND seen_at IS NOT NULL THEN 1 ELSE 0 END)::int AS skipped
+       FROM articles GROUP BY source_key`
+    );
     return SOURCES.map((s) => {
       const st = states.find((x) => x.source_key === s.key);
+      const eng = engagement.find((x) => x.source_key === s.key);
+      const opened = Number(eng?.opened ?? 0);
+      const skipped = Number(eng?.skipped ?? 0);
       return {
         key: s.key,
         name: s.name,
@@ -384,6 +409,9 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         lastOkAt: st?.last_ok_at ?? null,
         lastError: st?.last_error ?? null,
         articlesTotal: Number(st?.articles_total ?? 0),
+        opened,
+        skipped,
+        readPct: opened + skipped > 0 ? Math.round((opened / (opened + skipped)) * 100) : null,
       };
     });
   });
