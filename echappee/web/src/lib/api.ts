@@ -13,6 +13,7 @@ export interface ArticleCard {
   lang: string;
   category: Category;
   summary: string | null;
+  brief: string | null;
   hasFullText: boolean;
   readingMinutes: number | null;
   read: boolean;

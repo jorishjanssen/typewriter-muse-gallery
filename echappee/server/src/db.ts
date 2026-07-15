@@ -49,11 +49,13 @@ CREATE TABLE IF NOT EXISTS articles (
   cluster_id INTEGER REFERENCES clusters(id),
   enriched_at TEXT,
   riders_at TEXT,
+  brief TEXT,
   read_at TEXT,
   UNIQUE(source_key, guid)
 );
 
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS riders_at TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS brief TEXT;
 
 CREATE TABLE IF NOT EXISTS article_riders (
   article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
