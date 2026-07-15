@@ -58,6 +58,29 @@ jobs:
           process.exit(0);
           "
 
+      - name: LLM ping (verifies AI Gateway / provider key)
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.ECHAPPEE_AI_GATEWAY_API_KEY }}
+          LLM_API_KEY: ${{ secrets.ECHAPPEE_LLM_API_KEY }}
+          LLM_MODEL: ${{ vars.ECHAPPEE_LLM_MODEL }}
+        run: |
+          node --input-type=module -e "
+          import OpenAI from 'openai';
+          const gw = (process.env.AI_GATEWAY_API_KEY ?? '').trim();
+          const direct = (process.env.LLM_API_KEY ?? '').trim();
+          if (!gw && !direct) { console.log('LLM: no key configured'); process.exit(0); }
+          const base = direct ? 'https://api.deepseek.com' : 'https://ai-gateway.vercel.sh/v1';
+          const model = (process.env.LLM_MODEL ?? '').trim() || (direct ? 'deepseek-chat' : 'deepseek/deepseek-v3.1');
+          const client = new OpenAI({ baseURL: base, apiKey: direct || gw });
+          try {
+            const res = await client.chat.completions.create({ model, messages: [{ role: 'user', content: 'Reply with exactly: OK' }], max_tokens: 5 });
+            console.log('LLM ping ok — model:', model, 'reply:', JSON.stringify(res.choices[0]?.message?.content));
+          } catch (e) {
+            console.log('LLM ping FAILED — model:', model, 'status:', e.status ?? 'n/a', 'error:', e.message);
+          }
+          process.exit(0);
+          "
+
       - name: Inspect database
         env:
           DATABASE_URL: ${{ secrets.ECHAPPEE_DATABASE_URL }}
@@ -73,6 +96,7 @@ jobs:
           console.log('by id (param):', await sql.unsafe('SELECT id, title FROM articles WHERE id = \$1', [id]));
           console.log('content health:', await sql.unsafe(\"SELECT source_key, COUNT(*)::int AS total, SUM(CASE WHEN content_text IS NULL OR LENGTH(content_text) < 200 THEN 1 ELSE 0 END)::int AS thin FROM articles GROUP BY source_key ORDER BY source_key\"));
           console.log('thin articles:', await sql.unsafe(\"SELECT id, source_key, url, LEFT(title, 70) AS title, COALESCE(LENGTH(content_text),0)::int AS len FROM articles WHERE content_text IS NULL OR LENGTH(content_text) < 200 ORDER BY id DESC LIMIT 15\"));
+          console.log('enrichment:', await sql.unsafe(\"SELECT COUNT(*)::int AS total, SUM(CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END)::int AS enriched FROM articles\"));
           await sql.end({ timeout: 5 });
           process.exit(0);
           "
