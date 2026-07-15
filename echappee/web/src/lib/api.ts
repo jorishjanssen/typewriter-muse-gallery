@@ -63,11 +63,18 @@ export interface SourceHealth {
   articlesTotal: number;
 }
 
+export interface LlmModelSetting {
+  model: string;
+  defaultModel: string;
+  custom: string | null;
+}
+
 export interface Status {
   articles: number;
   unread: number;
   llm: { enabled: boolean; model: string; baseUrl: string };
   scrapeIntervalMinutes: number;
+  managedScraper: boolean;
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -91,6 +98,9 @@ export const api = {
     return request<FeedPage>(`/api/feed?${params}`);
   },
   riders: () => request<Rider[]>('/api/riders'),
+  llmModel: () => request<LlmModelSetting>('/api/settings/llm'),
+  setLlmModel: (model: string) =>
+    request<LlmModelSetting>('/api/settings/llm', { method: 'PUT', body: JSON.stringify({ model }) }),
   article: (id: number | string) => request<FullArticle>(`/api/articles/${id}`),
   markRead: (id: number) => request(`/api/articles/${id}/read`, { method: 'POST' }),
   markUnread: (id: number) => request(`/api/articles/${id}/unread`, { method: 'POST' }),

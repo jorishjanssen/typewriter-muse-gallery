@@ -1,7 +1,7 @@
 import { config, llmEnabled } from '../config.js';
 import { nowIso, type Db } from '../db.js';
 import { SOURCES, type SourceDef } from '../sources.js';
-import { enrichArticle, riderKey } from '../llm.js';
+import { enrichArticle, riderKey, setLlmModel } from '../llm.js';
 import { categorizeByKeywords } from './categorize.js';
 import { createCluster, matchClusterByTitle, recentClusters, touchCluster } from './cluster.js';
 import { extractArticle, htmlToText, sanitizeFragment, type Extracted } from './extract.js';
@@ -47,6 +47,12 @@ export async function refreshAll(
   if (running) return { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0 };
   running = true;
   try {
+    // The UI-selected model (settings table) wins over env configuration.
+    const modelSetting = await db.query<{ value: string }>(
+      `SELECT value FROM settings WHERE key = 'llm_model'`
+    );
+    setLlmModel(modelSetting[0]?.value ?? null);
+
     const stats: RefreshStats = { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0 };
     for (const source of SOURCES.filter((s) => s.enabled)) {
       const entry = await refreshSource(db, source, opts);

@@ -143,6 +143,30 @@ describe('riders', () => {
   });
 });
 
+describe('LLM model setting', () => {
+  it('persists, surfaces in status, feeds the pipeline, and resets', async () => {
+    const put = await app.inject({
+      method: 'PUT', url: '/api/settings/llm',
+      payload: { model: 'deepseek/deepseek-v4-pro' },
+    });
+    expect(put.json().custom).toBe('deepseek/deepseek-v4-pro');
+
+    const status = (await app.inject({ method: 'GET', url: '/api/status' })).json() as any;
+    expect(status.llm.model).toBe('deepseek/deepseek-v4-pro');
+
+    const { refreshAll } = await import('../src/pipeline/refresh.js');
+    const { currentLlmModel } = await import('../src/llm.js');
+    await refreshAll(db, { extract: async () => ({ contentHtml: null, contentText: null, imageUrl: null, author: null }) });
+    expect(currentLlmModel()).toBe('deepseek/deepseek-v4-pro');
+
+    const bad = await app.inject({ method: 'PUT', url: '/api/settings/llm', payload: { model: 'nope; DROP TABLE' } });
+    expect(bad.statusCode).toBe(400);
+
+    const reset = await app.inject({ method: 'PUT', url: '/api/settings/llm', payload: { model: '' } });
+    expect(reset.json().custom).toBeNull();
+  });
+});
+
 describe('GET /api/articles/:id', () => {
   it('returns full content and cluster alternates', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };

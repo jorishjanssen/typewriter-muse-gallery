@@ -264,6 +264,41 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     });
   });
 
+  // ---- LLM model setting ------------------------------------------------------
+  const getModelSetting = async (): Promise<string | null> => {
+    const rows = await db.query<{ value: string }>(
+      `SELECT value FROM settings WHERE key = 'llm_model'`
+    );
+    return rows[0]?.value ?? null;
+  };
+
+  app.get('/api/settings/llm', async () => {
+    const custom = await getModelSetting();
+    return {
+      model: custom ?? config.llm.model,
+      defaultModel: config.llm.model,
+      custom,
+    };
+  });
+
+  app.put<{ Body: { model?: string } }>('/api/settings/llm', async (req, reply) => {
+    const model = (req.body?.model ?? '').trim();
+    if (model.length > 100 || (model && !/^[\w./:-]+$/.test(model))) {
+      return reply.code(400).send({ error: 'invalid model id' });
+    }
+    if (model) {
+      await db.query(
+        `INSERT INTO settings (key, value) VALUES ('llm_model', $1)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [model]
+      );
+    } else {
+      await db.query(`DELETE FROM settings WHERE key = 'llm_model'`);
+    }
+    const custom = await getModelSetting();
+    return { model: custom ?? config.llm.model, defaultModel: config.llm.model, custom };
+  });
+
   // ---- Status + manual refresh ----------------------------------------------
   app.get('/api/status', async () => {
     const counts = (
@@ -273,10 +308,15 @@ export function registerApi(app: FastifyInstance, db: Db): void {
          FROM articles`
       )
     )[0];
+    const customModel = await getModelSetting();
     return {
       articles: counts.total,
       unread: counts.unread,
-      llm: { enabled: llmEnabled(), model: config.llm.model, baseUrl: config.llm.baseUrl },
+      llm: {
+        enabled: llmEnabled(),
+        model: customModel ?? config.llm.model,
+        baseUrl: config.llm.baseUrl,
+      },
       scrapeIntervalMinutes: config.scrape.intervalMinutes,
       managedScraper: Boolean(process.env.VERCEL),
     };
