@@ -95,6 +95,25 @@ describe('read state', () => {
   });
 });
 
+describe('cluster read state', () => {
+  it('marks a whole cluster read and unread again', async () => {
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const clustered = feed.cards.find((c) => c.alternates.length === 1);
+    await app.inject({ method: 'POST', url: `/api/clusters/${clustered.clusterId}/read` });
+
+    const unread = (await app.inject({ method: 'GET', url: '/api/feed?unread=1' })).json() as { cards: any[] };
+    expect(unread.cards.every((c) => c.clusterId !== clustered.clusterId)).toBe(true);
+
+    await app.inject({ method: 'POST', url: `/api/clusters/${clustered.clusterId}/unread` });
+    const restored = (await app.inject({ method: 'GET', url: '/api/feed?unread=1' })).json() as { cards: any[] };
+    const card = restored.cards.find((c) => c.clusterId === clustered.clusterId);
+    expect(card).toBeDefined();
+    // Both the primary article and its alternate are unread again.
+    expect(card.read).toBe(false);
+    expect(card.alternates.every((alt: any) => !alt.read)).toBe(true);
+  });
+});
+
 describe('GET /api/articles/:id', () => {
   it('returns full content and cluster alternates', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
