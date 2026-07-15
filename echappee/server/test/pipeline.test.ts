@@ -341,6 +341,23 @@ describe('parse race in enrichment', () => {
   });
 });
 
+describe('resolveTaskModel', () => {
+  it('routes bulk tasks to the cheap model on the gateway, judgement tasks to the main model', async () => {
+    const { resolveTaskModel, CHEAP_BULK_MODEL } = await import('../src/llm.js');
+    const main = 'deepseek/deepseek-v4-pro';
+    expect(resolveTaskModel('enrich', main, null, true)).toBe(CHEAP_BULK_MODEL);
+    expect(resolveTaskModel('brief', main, null, true)).toBe(CHEAP_BULK_MODEL);
+    expect(resolveTaskModel('merge', main, null, true)).toBe(main);
+    expect(resolveTaskModel('guide', main, null, true)).toBe(main);
+    // Explicit override always wins.
+    expect(resolveTaskModel('enrich', main, 'anthropic/claude-haiku-4.5', true)).toBe(
+      'anthropic/claude-haiku-4.5'
+    );
+    // Off the gateway, slugs aren't portable — everything follows the main model.
+    expect(resolveTaskModel('enrich', 'deepseek-chat', null, false)).toBe('deepseek-chat');
+  });
+});
+
 describe('riderKey', () => {
   it('unifies diacritics, case and spacing', async () => {
     const { riderKey } = await import('../src/llm.js');

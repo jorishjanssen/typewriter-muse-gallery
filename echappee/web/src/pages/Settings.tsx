@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api, timeAgo, type Mute } from '../lib/api';
+import { api, timeAgo, type LlmTask, type Mute } from '../lib/api';
 
 const AUTOSEEN_KEY = 'echappee-autoseen';
 
@@ -202,10 +202,17 @@ export default function Settings() {
 }
 
 const MODEL_PRESETS = [
-  { slug: 'deepseek/deepseek-v3.1', label: 'DeepSeek V3.1', note: 'free tier' },
-  { slug: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', note: 'paid credits' },
-  { slug: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5', note: 'paid credits' },
-  { slug: 'openai/gpt-4o-mini', label: 'GPT-4o mini', note: 'paid credits' },
+  { slug: 'deepseek/deepseek-v3.1', label: 'DeepSeek V3.1', note: 'cheap' },
+  { slug: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', note: 'reasoning' },
+  { slug: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5', note: 'fast' },
+  { slug: 'openai/gpt-4o-mini', label: 'GPT-4o mini', note: 'cheap' },
+];
+
+const TASKS: { key: LlmTask; label: string; hint: string }[] = [
+  { key: 'enrich', label: 'Article enrichment', hint: 'summaries, riders, importance — bulk work, every article' },
+  { key: 'brief', label: 'Merged briefs', hint: 'one brief per multi-source story' },
+  { key: 'merge', label: 'Story merging', hint: 'judgement calls — a wrong merge hides a story' },
+  { key: 'guide', label: 'Watch guides', hint: 'spoiler-free viewing tips per race day' },
 ];
 
 function ModelSection() {
@@ -213,13 +220,23 @@ function ModelSection() {
   const setting = useQuery({ queryKey: ['llm-model'], queryFn: api.llmModel });
   const [custom, setCustom] = useState('');
 
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['llm-model'] });
+    void queryClient.invalidateQueries({ queryKey: ['status'] });
+  };
+
   const save = useMutation({
     mutationFn: (model: string) => api.setLlmModel(model),
     onSuccess: () => {
       setCustom('');
-      void queryClient.invalidateQueries({ queryKey: ['llm-model'] });
-      void queryClient.invalidateQueries({ queryKey: ['status'] });
+      invalidate();
     },
+  });
+
+  const saveTask = useMutation({
+    mutationFn: ({ task, model }: { task: LlmTask; model: string }) =>
+      api.setLlmTaskModel(task, model),
+    onSuccess: invalidate,
   });
 
   const active = setting.data?.model;
@@ -228,8 +245,8 @@ function ModelSection() {
     <section>
       <h2 className="font-serif text-xl font-bold mb-1">AI model</h2>
       <p className="text-sm opacity-60 mb-3">
-        Used for summaries, categories, rider extraction and story clustering. Changes apply from
-        the next scrape (within ~30 minutes). Some models need paid AI Gateway credits.
+        The main model, used for judgement-heavy work. Changes apply from the next scrape
+        (within ~30 minutes).
       </p>
       <div className="flex flex-wrap gap-2">
         {MODEL_PRESETS.map((m) => (
@@ -285,6 +302,42 @@ function ModelSection() {
       )}
       {save.isError && (
         <p className="mt-2 text-sm text-accent">Could not save — check the model id.</p>
+      )}
+
+      {setting.data && (
+        <div className="mt-6">
+          <h3 className="font-semibold mb-1">Per task</h3>
+          <p className="text-sm opacity-60 mb-3">
+            Bulk labeling defaults to a cheap model; judgement calls default to the main model
+            above. Pin any task to a specific model.
+          </p>
+          <ul className="space-y-3">
+            {TASKS.map((t) => {
+              const state = setting.data!.tasks[t.key];
+              return (
+                <li key={t.key} className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{t.label}</span>
+                    <span className="block text-xs opacity-60">{t.hint}</span>
+                  </span>
+                  <select
+                    value={state.override ?? ''}
+                    onChange={(e) => saveTask.mutate({ task: t.key, model: e.target.value })}
+                    disabled={saveTask.isPending}
+                    className="max-w-[45%] rounded-xl border border-ink/15 dark:border-snow/20 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent"
+                  >
+                    <option value="">Auto · {state.effective.split('/').pop()}</option>
+                    {MODEL_PRESETS.map((m) => (
+                      <option key={m.slug} value={m.slug}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </section>
   );
