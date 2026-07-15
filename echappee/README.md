@@ -77,9 +77,9 @@ Defined in `server/src/sources.ts` — add an entry (name, feed URLs, language,
 default category) and restart. Multiple candidate feed URLs per source are
 tried until one works; per-source scrape health is visible under Settings.
 Current sources: Cyclingnews, Velo, Cycling Weekly, road.cc, Bikerumor,
-WielerFlits, Sporza Wielrennen, IDL ProCycling, NOS Wielrennen, Wieler Revue,
-HLN Wielrennen. (BikeRadar retired: bot-blocked.) Paywalled sites are
-deliberately excluded.
+WielerFlits, Sporza Wielrennen, IDL ProCycling, NOS Wielrennen, Wieler Revue.
+(BikeRadar and HLN retired: bot-blocked.) Paywalled sites are deliberately
+excluded.
 
 Scraping is polite: RSS-first, only new items fetched, 2s delay between
 article fetches per host, honest User-Agent, ~25 items max per source per run.

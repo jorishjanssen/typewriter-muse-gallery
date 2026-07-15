@@ -15,6 +15,9 @@ on:
       llm_models:
         description: Comma-separated model slugs to ping (empty = configured default)
         default: ''
+      probe_urls:
+        description: Comma-separated URLs to probe (status, headers, feed discovery, body preview)
+        default: ''
 
 jobs:
   debug:
@@ -58,6 +61,39 @@ jobs:
               }
             } catch (e) { console.log('feed error:', e.message); }
           }
+          process.exit(0);
+          "
+
+      - name: Probe arbitrary URLs (feed discovery / extraction debugging)
+        if: ${{ inputs.probe_urls != '' }}
+        env:
+          URLS: ${{ inputs.probe_urls }}
+        run: |
+          node --input-type=module -e "
+          const urls = (process.env.URLS ?? '').split(',').map(u => u.trim()).filter(Boolean);
+          const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+          async function probe(url, followItems) {
+            console.log('=== PROBE', url);
+            try {
+              const res = await fetch(url, { headers: { 'user-agent': UA, accept: '*/*' }, redirect: 'follow', signal: AbortSignal.timeout(20000) });
+              console.log('status:', res.status, res.headers.get('content-type'), '| final url:', res.url);
+              const body = await res.text();
+              // Feed link discovery in HTML heads.
+              const links = [...body.matchAll(/<link[^>]+(?:rss|atom)[^>]*>/gi)].map(m => m[0]);
+              if (links.length) console.log('feed links:', JSON.stringify(links.slice(0, 6), null, 1));
+              const hrefs = [...body.matchAll(/href=\"([^\"]*(?:rss|feed)[^\"]*)\"/gi)].map(m => m[1]);
+              if (hrefs.length) console.log('rss/feed hrefs:', JSON.stringify([...new Set(hrefs)].slice(0, 10)));
+              console.log('body preview:', JSON.stringify(body.slice(0, 700)));
+              // If this is a feed, surface item links and inspect the first article.
+              const items = [...body.matchAll(/<item>[\s\S]*?<link>([\s\S]*?)<\/link>/g)].map(m => m[1].trim());
+              if (items.length) {
+                console.log('feed item links:', JSON.stringify(items.slice(0, 3)));
+                if (followItems) await probe(items[0], false);
+              }
+            } catch (e) { console.log('probe error:', e.message); }
+            console.log();
+          }
+          for (const url of urls) await probe(url, true);
           process.exit(0);
           "
 

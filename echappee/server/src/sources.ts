@@ -110,10 +110,11 @@ export const SOURCES: SourceDef[] = [
     key: 'idlprocycling',
     name: 'IDL ProCycling',
     homepage: 'https://www.idlprocycling.com',
+    // Newsifier CMS: the RSS feed lives under /sitemap/news.xml (declared in
+    // the page head), not the usual /feed path.
     feedUrls: [
-      'https://www.idlprocycling.com/feed',
-      'https://www.idlprocycling.com/rss',
-      'https://www.indeleiderstrui.nl/feed/',
+      'https://www.idlprocycling.com/sitemap/news.xml',
+      'https://www.indeleiderstrui.nl/sitemap/news.xml',
     ],
     lang: 'nl',
     defaultCategory: 'racing',
@@ -144,15 +145,13 @@ export const SOURCES: SourceDef[] = [
     key: 'hlnwielrennen',
     name: 'HLN Wielrennen',
     homepage: 'https://www.hln.be/sport/wielrennen',
-    // HLN+ premium articles have no full text and are filtered out by the
-    // substantial-text rule, like WielerFlits premium posts.
-    feedUrls: [
-      'https://www.hln.be/sport/wielrennen/rss.xml',
-      'https://www.hln.be/sport/rss.xml',
-    ],
+    // Retired: the feed parses but DPG Media's WAF 403s every article fetch
+    // and the feed itself ships no article bodies (paidrss) — nothing to
+    // ingest. Sporza covers the Belgian angle.
+    feedUrls: ['https://www.hln.be/sport/wielrennen/rss.xml'],
     lang: 'nl',
     defaultCategory: 'racing',
-    enabled: true,
+    enabled: false,
   },
 ];
 
