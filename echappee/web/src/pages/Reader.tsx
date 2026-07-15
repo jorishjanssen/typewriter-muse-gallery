@@ -64,6 +64,19 @@ export default function Reader() {
               <time className="opacity-60">{timeAgo(a.publishedAt)}</time>
             </div>
             <h1 className="font-serif text-2xl md:text-3xl font-bold leading-tight">{a.title}</h1>
+            {a.riders?.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {a.riders.map((r) => (
+                  <Link
+                    key={r.key}
+                    to={`/rider/${encodeURIComponent(r.key)}?name=${encodeURIComponent(r.name)}`}
+                    className="rounded-full bg-accent/10 text-accent px-3 py-1 text-xs font-semibold hover:bg-accent hover:text-white transition-colors"
+                  >
+                    {r.name}
+                  </Link>
+                ))}
+              </div>
+            )}
             {a.summary && (
               <p className="mt-3 text-[0.95rem] leading-relaxed border-l-4 border-accent/60 pl-3 opacity-85">
                 {a.summary}

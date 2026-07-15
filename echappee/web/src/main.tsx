@@ -7,6 +7,8 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
 import Feed from './pages/Feed';
 import Reader from './pages/Reader';
+import RiderFeed from './pages/RiderFeed';
+import Riders from './pages/Riders';
 import Settings from './pages/Settings';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -38,6 +40,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/" element={<Feed />} />
           <Route path="/article/:id" element={<Reader />} />
+          <Route path="/riders" element={<Riders />} />
+          <Route path="/rider/:key" element={<RiderFeed />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </BrowserRouter>

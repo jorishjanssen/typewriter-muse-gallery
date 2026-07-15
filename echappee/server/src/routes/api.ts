@@ -60,7 +60,14 @@ const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt,
 export function registerApi(app: FastifyInstance, db: Db): void {
   // ---- Feed: newest clusters, one card each --------------------------------
   app.get<{
-    Querystring: { category?: string; source?: string; unread?: string; before?: string; limit?: string };
+    Querystring: {
+      category?: string;
+      source?: string;
+      rider?: string;
+      unread?: string;
+      before?: string;
+      limit?: string;
+    };
   }>('/api/feed', async (req) => {
     const limit = Math.min(Number(req.query.limit ?? 25), 100);
     const mutes = await getMutes(db);
@@ -77,6 +84,10 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     if (req.query.source) {
       params.push(req.query.source);
       where.push(`source_key = $${params.length}`);
+    }
+    if (req.query.rider) {
+      params.push(req.query.rider);
+      where.push(`id IN (SELECT article_id FROM article_riders WHERE rider_key = $${params.length})`);
     }
     if (req.query.unread === '1') where.push('read_at IS NULL');
     if (req.query.before) {
@@ -144,7 +155,29 @@ export function registerApi(app: FastifyInstance, db: Db): void {
        WHERE cluster_id = $1 AND id != $2 ORDER BY published_at DESC`,
       [row.cluster_id, row.id]
     );
-    return { ...articleCard(row), contentHtml: row.content_html, alternates: siblings.map(articleCard) };
+    const riders = await db.query<{ key: string; name: string }>(
+      'SELECT rider_key AS key, rider_name AS name FROM article_riders WHERE article_id = $1',
+      [row.id]
+    );
+    return {
+      ...articleCard(row),
+      contentHtml: row.content_html,
+      alternates: siblings.map(articleCard),
+      riders,
+    };
+  });
+
+  // ---- Riders ----------------------------------------------------------------
+  app.get('/api/riders', async () => {
+    return db.query<{ key: string; name: string; articles: number }>(
+      `SELECT rider_key AS key,
+              mode() WITHIN GROUP (ORDER BY rider_name) AS name,
+              COUNT(*)::int AS articles
+       FROM article_riders
+       GROUP BY rider_key
+       ORDER BY articles DESC, name ASC
+       LIMIT 300`
+    );
   });
 
   // ---- Read state -----------------------------------------------------------

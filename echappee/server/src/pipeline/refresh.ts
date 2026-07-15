@@ -1,7 +1,7 @@
 import { config, llmEnabled } from '../config.js';
 import { nowIso, type Db } from '../db.js';
 import { SOURCES, type SourceDef } from '../sources.js';
-import { enrichArticle } from '../llm.js';
+import { enrichArticle, riderKey } from '../llm.js';
 import { categorizeByKeywords } from './categorize.js';
 import { createCluster, matchClusterByTitle, recentClusters, touchCluster } from './cluster.js';
 import { extractArticle, htmlToText, sanitizeFragment, type Extracted } from './extract.js';
@@ -12,6 +12,19 @@ export interface RefreshStats {
   totalNew: number;
   repaired: number;
   removed: number;
+  backfilled: number;
+}
+
+export async function saveRiders(db: Db, articleId: number, riders: string[]): Promise<void> {
+  for (const name of riders) {
+    const key = riderKey(name);
+    if (!key) continue;
+    await db.query(
+      `INSERT INTO article_riders (article_id, rider_key, rider_name) VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [articleId, key, name.trim()]
+    );
+  }
 }
 
 /** True when extracted content is a real article rather than a video/podcast/teaser post. */
@@ -31,10 +44,10 @@ export async function refreshAll(
     onSource?: (entry: RefreshStats['sources'][number]) => void;
   } = {}
 ): Promise<RefreshStats> {
-  if (running) return { sources: [], totalNew: 0, repaired: 0, removed: 0 };
+  if (running) return { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0 };
   running = true;
   try {
-    const stats: RefreshStats = { sources: [], totalNew: 0, repaired: 0, removed: 0 };
+    const stats: RefreshStats = { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0 };
     for (const source of SOURCES.filter((s) => s.enabled)) {
       const entry = await refreshSource(db, source, opts);
       stats.sources.push(entry);
@@ -49,6 +62,7 @@ export async function refreshAll(
       const cleanup = await repairOrRemoveThinArticles(db);
       stats.repaired = cleanup.repaired;
       stats.removed = cleanup.removed;
+      if (llmEnabled()) stats.backfilled = await backfillEnrichment(db);
     }
     return stats;
   } finally {
@@ -185,6 +199,7 @@ export async function ingestArticle(
   let summary: string | null = null;
   let category = categorizeByKeywords(item.title, text, source.defaultCategory);
   let clusterId: number | null = null;
+  let riders: string[] | null = null;
 
   if (llmEnabled()) {
     const enrichment = await enrichArticle({
@@ -196,6 +211,7 @@ export async function ingestArticle(
     if (enrichment) {
       summary = enrichment.summary;
       category = enrichment.category;
+      riders = enrichment.riders;
       if (enrichment.clusterMatch !== null) clusterId = candidates[enrichment.clusterMatch].id;
     }
   }
@@ -207,8 +223,8 @@ export async function ingestArticle(
   const rows = await db.query<{ id: number }>(
     `INSERT INTO articles
        (source_key, guid, url, title, author, published_at, fetched_at, excerpt, content_html,
-        content_text, image_url, lang, category, summary, cluster_id, enriched_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        content_text, image_url, lang, category, summary, cluster_id, enriched_at, riders_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      ON CONFLICT (source_key, guid) DO NOTHING
      RETURNING id`,
     [
@@ -228,7 +244,42 @@ export async function ingestArticle(
       summary,
       clusterId,
       summary ? nowIso() : null,
+      riders !== null ? nowIso() : null,
     ]
   );
-  return rows[0]?.id ?? 0;
+  const id = rows[0]?.id ?? 0;
+  if (id > 0 && riders !== null) await saveRiders(db, id, riders);
+  return id;
+}
+
+/**
+ * Enrich stored articles that have no rider data yet (bounded per run):
+ * extracts riders, and fills in summary/category for articles ingested
+ * before the LLM key existed. Clustering is left untouched.
+ */
+async function backfillEnrichment(db: Db, limit = 25): Promise<number> {
+  const rows = await db.query<{ id: number; title: string; content_text: string | null; lang: string }>(
+    `SELECT id, title, content_text, lang FROM articles
+     WHERE riders_at IS NULL ORDER BY published_at DESC LIMIT $1`,
+    [limit]
+  );
+  let done = 0;
+  for (const row of rows) {
+    const enrichment = await enrichArticle({
+      title: row.title,
+      text: row.content_text ?? '',
+      lang: row.lang,
+      candidateClusters: [],
+    });
+    if (!enrichment) continue;
+    await db.query(
+      `UPDATE articles SET summary = COALESCE(summary, $1), category = $2,
+         enriched_at = COALESCE(enriched_at, $3), riders_at = $3
+       WHERE id = $4`,
+      [enrichment.summary, enrichment.category, nowIso(), row.id]
+    );
+    await saveRiders(db, row.id, enrichment.riders);
+    done++;
+  }
+  return done;
 }

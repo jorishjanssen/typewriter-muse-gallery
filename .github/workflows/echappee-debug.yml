@@ -96,7 +96,8 @@ jobs:
           console.log('by id (param):', await sql.unsafe('SELECT id, title FROM articles WHERE id = \$1', [id]));
           console.log('content health:', await sql.unsafe(\"SELECT source_key, COUNT(*)::int AS total, SUM(CASE WHEN content_text IS NULL OR LENGTH(content_text) < 200 THEN 1 ELSE 0 END)::int AS thin FROM articles GROUP BY source_key ORDER BY source_key\"));
           console.log('thin articles:', await sql.unsafe(\"SELECT id, source_key, url, LEFT(title, 70) AS title, COALESCE(LENGTH(content_text),0)::int AS len FROM articles WHERE content_text IS NULL OR LENGTH(content_text) < 200 ORDER BY id DESC LIMIT 15\"));
-          console.log('enrichment:', await sql.unsafe(\"SELECT COUNT(*)::int AS total, SUM(CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END)::int AS enriched FROM articles\"));
+          console.log('enrichment:', await sql.unsafe(\"SELECT COUNT(*)::int AS total, SUM(CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END)::int AS enriched, SUM(CASE WHEN riders_at IS NULL THEN 1 ELSE 0 END)::int AS rider_backlog FROM articles\"));
+          console.log('top riders:', await sql.unsafe(\"SELECT rider_key, COUNT(*)::int AS n FROM article_riders GROUP BY rider_key ORDER BY n DESC LIMIT 10\").catch(() => 'article_riders table not created yet'));
           await sql.end({ timeout: 5 });
           process.exit(0);
           "

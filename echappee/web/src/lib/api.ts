@@ -32,6 +32,16 @@ export interface FeedPage {
 export interface FullArticle extends ArticleCard {
   contentHtml: string | null;
   alternates: ArticleCard[];
+  riders: RiderRef[];
+}
+
+export interface RiderRef {
+  key: string;
+  name: string;
+}
+
+export interface Rider extends RiderRef {
+  articles: number;
 }
 
 export interface Mute {
@@ -72,13 +82,15 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  feed: (opts: { category?: Category; unread?: boolean; before?: string }) => {
+  feed: (opts: { category?: Category; rider?: string; unread?: boolean; before?: string }) => {
     const params = new URLSearchParams();
     if (opts.category) params.set('category', opts.category);
+    if (opts.rider) params.set('rider', opts.rider);
     if (opts.unread) params.set('unread', '1');
     if (opts.before) params.set('before', opts.before);
     return request<FeedPage>(`/api/feed?${params}`);
   },
+  riders: () => request<Rider[]>('/api/riders'),
   article: (id: number | string) => request<FullArticle>(`/api/articles/${id}`),
   markRead: (id: number) => request(`/api/articles/${id}/read`, { method: 'POST' }),
   markUnread: (id: number) => request(`/api/articles/${id}/unread`, { method: 'POST' }),
