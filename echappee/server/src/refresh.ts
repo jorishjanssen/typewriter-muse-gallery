@@ -17,7 +17,7 @@ const stats = await refreshAll(db, {
 });
 const failures = stats.sources.filter((s) => !s.ok).length;
 console.log(
-  `Total new: ${stats.totalNew}; repaired: ${stats.repaired}; removed non-articles: ${stats.removed}`
+  `Total new: ${stats.totalNew}; repaired: ${stats.repaired}; removed non-articles: ${stats.removed}; clusters merged: ${stats.merged}`
 );
 await db.close();
 // Exit explicitly: lingering sockets/handles otherwise keep Node alive and a

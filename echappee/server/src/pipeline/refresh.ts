@@ -6,6 +6,7 @@ import { categorizeByKeywords } from './categorize.js';
 import { createCluster, matchClusterByTitle, recentClusters, touchCluster } from './cluster.js';
 import { extractArticle, htmlToText, sanitizeFragment, type Extracted } from './extract.js';
 import { fetchFeed, userAgentFor, type FeedItem } from './fetchFeeds.js';
+import { mergeDuplicateClusters } from './merge.js';
 
 export interface RefreshStats {
   sources: { key: string; ok: boolean; newArticles: number; skipped: number; error?: string }[];
@@ -13,6 +14,7 @@ export interface RefreshStats {
   repaired: number;
   removed: number;
   backfilled: number;
+  merged: number;
 }
 
 export async function linkRace(db: Db, articleId: number, race: RaceRef): Promise<void> {
@@ -65,7 +67,7 @@ export async function refreshAll(
     onSource?: (entry: RefreshStats['sources'][number]) => void;
   } = {}
 ): Promise<RefreshStats> {
-  if (running) return { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0 };
+  if (running) return { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0, merged: 0 };
   running = true;
   try {
     // The UI-selected model (settings table) wins over env configuration.
@@ -74,7 +76,7 @@ export async function refreshAll(
     );
     setLlmModel(modelSetting[0]?.value ?? null);
 
-    const stats: RefreshStats = { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0 };
+    const stats: RefreshStats = { sources: [], totalNew: 0, repaired: 0, removed: 0, backfilled: 0, merged: 0 };
     for (const source of SOURCES.filter((s) => s.enabled)) {
       const entry = await refreshSource(db, source, opts);
       stats.sources.push(entry);
@@ -91,6 +93,7 @@ export async function refreshAll(
       stats.removed = cleanup.removed;
       if (llmEnabled()) {
         stats.backfilled = await backfillEnrichment(db);
+        stats.merged = await mergeDuplicateClusters(db);
         await generateWatchGuides(db);
       }
     }
