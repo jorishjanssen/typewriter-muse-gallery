@@ -60,9 +60,30 @@ export const SOURCES: SourceDef[] = [
     homepage: 'https://www.bikeradar.com',
     feedUrls: ['https://www.bikeradar.com/feed'],
     lang: 'en',
+    // Retired: TLS-level bot detection rejects every fetch (406) even with a
+    // browser UA. road.cc covers the same ground. Entry kept so stored
+    // articles keep their source name.
+    defaultCategory: 'gear',
+    enabled: false,
+    browserUa: true,
+  },
+  {
+    key: 'roadcc',
+    name: 'road.cc',
+    homepage: 'https://road.cc',
+    feedUrls: ['https://road.cc/rss', 'https://road.cc/rss.xml', 'https://road.cc/feed'],
+    lang: 'en',
     defaultCategory: 'gear',
     enabled: true,
-    browserUa: true,
+  },
+  {
+    key: 'bikerumor',
+    name: 'Bikerumor',
+    homepage: 'https://bikerumor.com',
+    feedUrls: ['https://bikerumor.com/feed/'],
+    lang: 'en',
+    defaultCategory: 'gear',
+    enabled: true,
   },
   {
     key: 'wielerflits',
@@ -80,6 +101,54 @@ export const SOURCES: SourceDef[] = [
     feedUrls: [
       'https://sporza.be/nl/categorie/wielrennen.rss.xml',
       'https://www.vrt.be/vrtnws/nl.rss.sport.wielrennen.xml',
+    ],
+    lang: 'nl',
+    defaultCategory: 'racing',
+    enabled: true,
+  },
+  {
+    key: 'idlprocycling',
+    name: 'IDL ProCycling',
+    homepage: 'https://www.idlprocycling.com',
+    feedUrls: [
+      'https://www.idlprocycling.com/feed',
+      'https://www.idlprocycling.com/rss',
+      'https://www.indeleiderstrui.nl/feed/',
+    ],
+    lang: 'nl',
+    defaultCategory: 'racing',
+    enabled: true,
+  },
+  {
+    key: 'noswielrennen',
+    name: 'NOS Wielrennen',
+    homepage: 'https://nos.nl/sport/wielrennen',
+    feedUrls: [
+      'https://feeds.nos.nl/nossportwielrennen',
+      'https://nos.nl/feeds/nossportwielrennen',
+    ],
+    lang: 'nl',
+    defaultCategory: 'racing',
+    enabled: true,
+  },
+  {
+    key: 'wielerrevue',
+    name: 'Wieler Revue',
+    homepage: 'https://wielerrevue.nl',
+    feedUrls: ['https://wielerrevue.nl/feed', 'https://wielerrevue.nl/feed/'],
+    lang: 'nl',
+    defaultCategory: 'racing',
+    enabled: true,
+  },
+  {
+    key: 'hlnwielrennen',
+    name: 'HLN Wielrennen',
+    homepage: 'https://www.hln.be/sport/wielrennen',
+    // HLN+ premium articles have no full text and are filtered out by the
+    // substantial-text rule, like WielerFlits premium posts.
+    feedUrls: [
+      'https://www.hln.be/sport/wielrennen/rss.xml',
+      'https://www.hln.be/sport/rss.xml',
     ],
     lang: 'nl',
     defaultCategory: 'racing',
