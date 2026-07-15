@@ -116,7 +116,7 @@ export async function enrichArticle(input: {
       temperature: 0.1,
       // Generous cap: reasoning models (e.g. DeepSeek V4 Pro) spend tokens
       // thinking before the JSON; a tight cap yields empty content.
-      max_tokens: 2000,
+      max_tokens: 4000,
     });
     const raw = res.choices[0]?.message?.content ?? '';
     const parsed = parseEnrichment(raw, input.candidateClusters.length);
@@ -233,7 +233,7 @@ export async function generateClusterBrief(
       ],
       temperature: 0.2,
       // Headroom for reasoning models; the brief itself stays <=360 chars.
-      max_tokens: 1500,
+      max_tokens: 4000,
     });
     const raw = res.choices[0]?.message?.content ?? '';
     const brief = parseClusterBrief(raw);
@@ -293,7 +293,7 @@ export async function judgeClusterMerge(a: ClusterDigest, b: ClusterDigest): Pro
       ],
       temperature: 0,
       // The JSON is tiny but reasoning models think first — leave headroom.
-      max_tokens: 1500,
+      max_tokens: 4000,
     });
     const raw = res.choices[0]?.message?.content ?? '';
     const verdict = parseMergeVerdict(raw);
@@ -351,7 +351,7 @@ export async function generateWatchGuide(
       ],
       temperature: 0.2,
       // Headroom for reasoning models to think before the JSON.
-      max_tokens: 2000,
+      max_tokens: 4000,
     });
     const raw = res.choices[0]?.message?.content ?? '';
     const guide = parseWatchGuide(raw);
