@@ -62,6 +62,12 @@ export default function Reader() {
               )}
               <span className="opacity-50">·</span>
               <time className="opacity-60">{timeAgo(a.publishedAt)}</time>
+              {a.readingMinutes && (
+                <>
+                  <span className="opacity-50">·</span>
+                  <span className="opacity-60">{a.readingMinutes} min read</span>
+                </>
+              )}
             </div>
             <h1 className="font-serif text-2xl md:text-3xl font-bold leading-tight">{a.title}</h1>
             {a.riders?.length > 0 && (
