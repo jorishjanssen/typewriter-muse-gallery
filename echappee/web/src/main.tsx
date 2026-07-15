@@ -7,6 +7,8 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
 import Feed from './pages/Feed';
 import Reader from './pages/Reader';
+import RaceStage from './pages/RaceStage';
+import Races from './pages/Races';
 import RiderFeed from './pages/RiderFeed';
 import Riders from './pages/Riders';
 import Settings from './pages/Settings';
@@ -40,6 +42,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/" element={<Feed />} />
           <Route path="/article/:id" element={<Reader />} />
+          <Route path="/races" element={<Races />} />
+          <Route path="/race/:id" element={<RaceStage />} />
           <Route path="/riders" element={<Riders />} />
           <Route path="/rider/:key" element={<RiderFeed />} />
           <Route path="/settings" element={<Settings />} />

@@ -69,6 +69,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       category?: string;
       source?: string;
       rider?: string;
+      race?: string;
       unread?: string;
       before?: string;
       limit?: string;
@@ -93,6 +94,10 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     if (req.query.rider) {
       params.push(req.query.rider);
       where.push(`id IN (SELECT article_id FROM article_riders WHERE rider_key = $${params.length})`);
+    }
+    if (req.query.race) {
+      params.push(Number(req.query.race));
+      where.push(`race_id = $${params.length}`);
     }
     if (req.query.unread === '1') where.push('read_at IS NULL');
     if (req.query.before) {
@@ -183,6 +188,52 @@ export function registerApi(app: FastifyInstance, db: Db): void {
        ORDER BY articles DESC, name ASC
        LIMIT 300`
     );
+  });
+
+  // ---- Races (spoiler-safe: no article data in these responses) --------------
+  app.get('/api/races', async () => {
+    return db.query(
+      `SELECT r.id, r.race_key AS "raceKey", r.race_name AS "raceName",
+              r.stage_label AS "stageLabel", r.race_date AS "raceDate",
+              COUNT(a.id)::int AS articles,
+              EXISTS (SELECT 1 FROM watch_guides w WHERE w.race_id = r.id) AS "hasGuide"
+       FROM races r LEFT JOIN articles a ON a.race_id = r.id
+       GROUP BY r.id
+       HAVING COUNT(a.id) > 0
+       ORDER BY r.race_date DESC NULLS LAST, r.race_name ASC, r.stage_label DESC`
+    );
+  });
+
+  app.get<{ Params: { id: string } }>('/api/races/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    const race = (
+      await db.query<{ id: number; race_name: string; stage_label: string; race_date: string | null }>(
+        'SELECT id, race_name, stage_label, race_date FROM races WHERE id = $1',
+        [id]
+      )
+    )[0];
+    if (!race) return reply.code(404).send({ error: 'not found' });
+    const guideRow = (
+      await db.query<{ guide: string; generated_at: string }>(
+        'SELECT guide, generated_at FROM watch_guides WHERE race_id = $1',
+        [id]
+      )
+    )[0];
+    const counts = (
+      await db.query<{ total: number }>(
+        'SELECT COUNT(*)::int AS total FROM articles WHERE race_id = $1',
+        [id]
+      )
+    )[0];
+    return {
+      id: race.id,
+      raceName: race.race_name,
+      stageLabel: race.stage_label,
+      raceDate: race.race_date,
+      articleCount: counts.total,
+      guide: guideRow ? JSON.parse(guideRow.guide) : null,
+      guideGeneratedAt: guideRow?.generated_at ?? null,
+    };
   });
 
   // ---- Read state -----------------------------------------------------------

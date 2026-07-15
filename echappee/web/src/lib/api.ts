@@ -46,6 +46,32 @@ export interface Rider extends RiderRef {
   articles: number;
 }
 
+export interface RaceRow {
+  id: number;
+  raceKey: string;
+  raceName: string;
+  stageLabel: string;
+  raceDate: string | null;
+  articles: number;
+  hasGuide: boolean;
+}
+
+export interface WatchGuideTier {
+  minutes: number | 'full';
+  fromKm: number;
+  why: string;
+}
+
+export interface RaceDetail {
+  id: number;
+  raceName: string;
+  stageLabel: string;
+  raceDate: string | null;
+  articleCount: number;
+  guide: { excitement: number; summary: string; tiers: WatchGuideTier[] } | null;
+  guideGeneratedAt: string | null;
+}
+
 export interface Mute {
   id: number;
   kind: 'term' | 'source' | 'category';
@@ -91,15 +117,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  feed: (opts: { category?: Category; rider?: string; unread?: boolean; before?: string }) => {
+  feed: (opts: { category?: Category; rider?: string; race?: number; unread?: boolean; before?: string }) => {
     const params = new URLSearchParams();
     if (opts.category) params.set('category', opts.category);
     if (opts.rider) params.set('rider', opts.rider);
+    if (opts.race) params.set('race', String(opts.race));
     if (opts.unread) params.set('unread', '1');
     if (opts.before) params.set('before', opts.before);
     return request<FeedPage>(`/api/feed?${params}`);
   },
   riders: () => request<Rider[]>('/api/riders'),
+  races: () => request<RaceRow[]>('/api/races'),
+  race: (id: number | string) => request<RaceDetail>(`/api/races/${id}`),
   llmModel: () => request<LlmModelSetting>('/api/settings/llm'),
   setLlmModel: (model: string) =>
     request<LlmModelSetting>('/api/settings/llm', { method: 'PUT', body: JSON.stringify({ model }) }),

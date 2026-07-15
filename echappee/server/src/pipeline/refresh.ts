@@ -1,7 +1,7 @@
 import { config, llmEnabled } from '../config.js';
 import { nowIso, type Db } from '../db.js';
 import { SOURCES, type SourceDef } from '../sources.js';
-import { enrichArticle, riderKey, setLlmModel } from '../llm.js';
+import { enrichArticle, generateWatchGuide, riderKey, setLlmModel, type RaceRef } from '../llm.js';
 import { categorizeByKeywords } from './categorize.js';
 import { createCluster, matchClusterByTitle, recentClusters, touchCluster } from './cluster.js';
 import { extractArticle, htmlToText, sanitizeFragment, type Extracted } from './extract.js';
@@ -13,6 +13,27 @@ export interface RefreshStats {
   repaired: number;
   removed: number;
   backfilled: number;
+}
+
+export async function linkRace(db: Db, articleId: number, race: RaceRef): Promise<void> {
+  const raceKey = `${riderKey(race.name)} ${race.year}`;
+  const stageLabel = race.stage ? `Stage ${race.stage}` : 'One-day race';
+  const raceName = `${race.name} ${race.year}`;
+  const rows = await db.query<{ id: number }>(
+    `INSERT INTO races (race_key, race_name, stage_label, race_date) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (race_key, stage_label)
+     DO UPDATE SET race_date = COALESCE(races.race_date, EXCLUDED.race_date)
+     RETURNING id`,
+    [raceKey, raceName, stageLabel, race.date]
+  );
+  const raceId = rows[0]?.id;
+  if (raceId) {
+    await db.query('UPDATE articles SET race_id = $1, race_kind = $2 WHERE id = $3', [
+      raceId,
+      race.kind,
+      articleId,
+    ]);
+  }
 }
 
 export async function saveRiders(db: Db, articleId: number, riders: string[]): Promise<void> {
@@ -68,7 +89,10 @@ export async function refreshAll(
       const cleanup = await repairOrRemoveThinArticles(db);
       stats.repaired = cleanup.repaired;
       stats.removed = cleanup.removed;
-      if (llmEnabled()) stats.backfilled = await backfillEnrichment(db);
+      if (llmEnabled()) {
+        stats.backfilled = await backfillEnrichment(db);
+        await generateWatchGuides(db);
+      }
     }
     return stats;
   } finally {
@@ -207,6 +231,7 @@ export async function ingestArticle(
   let clusterId: number | null = null;
   let riders: string[] | null = null;
   let brief: string | null = null;
+  let race: RaceRef | null = null;
 
   if (llmEnabled()) {
     const enrichment = await enrichArticle({
@@ -220,6 +245,7 @@ export async function ingestArticle(
       category = enrichment.category;
       riders = enrichment.riders;
       brief = enrichment.brief;
+      race = enrichment.race;
       if (enrichment.clusterMatch !== null) clusterId = candidates[enrichment.clusterMatch].id;
     }
   }
@@ -258,7 +284,42 @@ export async function ingestArticle(
   );
   const id = rows[0]?.id ?? 0;
   if (id > 0 && riders !== null) await saveRiders(db, id, riders);
+  if (id > 0 && race) await linkRace(db, id, race);
   return id;
+}
+
+/**
+ * Create or refresh spoiler-free watch guides for race days whose report
+ * count grew since the guide was generated (bounded per run).
+ */
+async function generateWatchGuides(db: Db, limit = 3): Promise<void> {
+  const pending = await db.query<{ id: number; race_name: string; stage_label: string; reports: number }>(
+    `SELECT r.id, r.race_name, r.stage_label, COUNT(a.id)::int AS reports
+     FROM races r JOIN articles a ON a.race_id = r.id AND a.race_kind = 'report'
+     GROUP BY r.id, r.race_name, r.stage_label
+     HAVING COUNT(a.id) > COALESCE((SELECT article_count FROM watch_guides w WHERE w.race_id = r.id), 0)
+     ORDER BY MAX(a.published_at) DESC
+     LIMIT $1`,
+    [limit]
+  );
+  for (const race of pending) {
+    const reports = await db.query<{ content_text: string | null }>(
+      `SELECT content_text FROM articles
+       WHERE race_id = $1 AND race_kind = 'report' AND content_text IS NOT NULL
+       ORDER BY LENGTH(content_text) DESC LIMIT 4`,
+      [race.id]
+    );
+    const texts = reports.map((r) => r.content_text!).filter(Boolean);
+    if (!texts.length) continue;
+    const guide = await generateWatchGuide(`${race.race_name} — ${race.stage_label}`, texts);
+    if (!guide) continue;
+    await db.query(
+      `INSERT INTO watch_guides (race_id, generated_at, article_count, guide) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (race_id) DO UPDATE SET generated_at = EXCLUDED.generated_at,
+         article_count = EXCLUDED.article_count, guide = EXCLUDED.guide`,
+      [race.id, nowIso(), race.reports, JSON.stringify(guide)]
+    );
+  }
 }
 
 /**
@@ -288,6 +349,7 @@ async function backfillEnrichment(db: Db, limit = 25): Promise<number> {
       [enrichment.summary, enrichment.category, nowIso(), enrichment.brief, row.id]
     );
     await saveRiders(db, row.id, enrichment.riders);
+    if (enrichment.race) await linkRace(db, row.id, enrichment.race);
     done++;
   }
   return done;

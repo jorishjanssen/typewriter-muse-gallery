@@ -57,6 +57,26 @@ CREATE TABLE IF NOT EXISTS articles (
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS riders_at TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS brief TEXT;
 
+CREATE TABLE IF NOT EXISTS races (
+  id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  race_key TEXT NOT NULL,
+  race_name TEXT NOT NULL,
+  stage_label TEXT NOT NULL,
+  race_date TEXT,
+  UNIQUE(race_key, stage_label)
+);
+
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS race_id INTEGER REFERENCES races(id);
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS race_kind TEXT;
+CREATE INDEX IF NOT EXISTS idx_articles_race ON articles(race_id);
+
+CREATE TABLE IF NOT EXISTS watch_guides (
+  race_id INTEGER PRIMARY KEY REFERENCES races(id) ON DELETE CASCADE,
+  generated_at TEXT NOT NULL,
+  article_count INTEGER NOT NULL,
+  guide TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS article_riders (
   article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
   rider_key TEXT NOT NULL,
