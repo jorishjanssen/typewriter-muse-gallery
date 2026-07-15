@@ -1,20 +1,25 @@
 import { Link } from 'react-router-dom';
 import { timeAgo, type FeedCard } from '../lib/api';
+import { useLongPress } from '../lib/useLongPress';
 import SwipeToRead from './SwipeToRead';
 
 /** Compact, Twitter-style rendering of a story: the news itself in ~360 chars. */
 export default function BriefCard({
   card,
   onToggleRead,
+  onLongPress,
 }: {
   card: FeedCard;
   onToggleRead: (card: FeedCard) => void;
+  onLongPress?: (card: FeedCard) => void;
 }) {
   const a = card.article;
   const text = a.brief ?? a.summary ?? a.excerpt ?? a.title;
+  const longPress = useLongPress(() => onLongPress?.(card));
   return (
     <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>
       <article
+        {...(onLongPress ? longPress : {})}
         className={`py-3.5 border-b border-ink/10 dark:border-snow/10 transition-opacity ${
           card.read ? 'opacity-45' : ''
         }`}

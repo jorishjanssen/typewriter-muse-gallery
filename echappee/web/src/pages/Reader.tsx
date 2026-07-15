@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import BackLink from '../components/BackLink';
 import { SkeletonArticle } from '../components/Skeleton';
-import TopBar, { IconButton } from '../components/TopBar';
 import { api, CATEGORY_LABELS, timeAgo } from '../lib/api';
 
 export default function Reader() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const article = useQuery({
@@ -33,21 +32,15 @@ export default function Reader() {
   const a = article.data;
 
   return (
-    <div className="min-h-screen pb-24">
-      <TopBar
-        right={
-          <IconButton label="Back to feed" onClick={() => navigate(-1)}>
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M19 12H5m7-7-7 7 7 7" />
-            </svg>
-          </IconButton>
-        }
-      />
+    <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
       <div className="mx-auto max-w-2xl px-4">
+        <div className="pt-2">
+          <BackLink label="Back" />
+        </div>
         {article.isLoading && <SkeletonArticle />}
         {article.isError && <p className="py-12 text-center opacity-60">Article not found.</p>}
         {a && (
-          <article className="py-6">
+          <article className="py-4">
             <div className="text-xs mb-3 flex flex-wrap items-center gap-2">
               <span className="font-semibold uppercase tracking-wide text-accent">
                 {CATEGORY_LABELS[a.category]}

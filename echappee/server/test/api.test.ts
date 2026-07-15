@@ -198,6 +198,35 @@ describe('races', () => {
   });
 });
 
+describe('GET /api/race-banner', () => {
+  it('surfaces a fresh watch guide and hides stale ones', async () => {
+    // No guides yet.
+    const empty = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
+    expect(empty.raceId).toBeNull();
+
+    // The races test above created "Tour de France 2026" — give it a guide.
+    const race = (
+      await db.query<{ id: number }>("SELECT id FROM races WHERE race_name = 'Tour de France 2026'")
+    )[0];
+    await db.query(
+      'INSERT INTO watch_guides (race_id, generated_at, article_count, guide) VALUES ($1, $2, $3, $4)',
+      [race.id, new Date().toISOString(), 1, '{"excitement":4,"summary":"x","tiers":[]}']
+    );
+    const fresh = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
+    expect(fresh.raceId).toBe(race.id);
+    expect(fresh.raceName).toBe('Tour de France 2026');
+    expect(fresh.stageLabel).toBe('Stage 10');
+    // Spoiler safety: guide content is never in the banner payload.
+    expect(JSON.stringify(fresh)).not.toContain('excitement');
+
+    // A guide older than 36h no longer banners.
+    const stale = new Date(Date.now() - 48 * 3600_000).toISOString();
+    await db.query('UPDATE watch_guides SET generated_at = $1 WHERE race_id = $2', [stale, race.id]);
+    const gone = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
+    expect(gone.raceId).toBeNull();
+  });
+});
+
 describe('GET /api/catchup', () => {
   it('surfaces high-importance unread clusters and counts the rest', async () => {
     // Known state: everything unread, importance set explicitly.

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CATEGORY_LABELS, timeAgo, type FeedCard } from '../lib/api';
+import { useLongPress } from '../lib/useLongPress';
 import SwipeToRead from './SwipeToRead';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -14,17 +15,21 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function StoryCard({
   card,
   onToggleRead,
+  onLongPress,
 }: {
   card: FeedCard;
   onToggleRead: (card: FeedCard) => void;
+  onLongPress?: (card: FeedCard) => void;
 }) {
   const a = card.article;
   const grouped = card.alternates.length > 0;
   const [expanded, setExpanded] = useState(false);
+  const longPress = useLongPress(() => onLongPress?.(card));
 
   return (
     <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>
       <article
+        {...(onLongPress ? longPress : {})}
         className={`transition-opacity ${card.read ? 'opacity-45' : ''} ${
           grouped
             ? 'my-3 rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10 px-4 py-4'

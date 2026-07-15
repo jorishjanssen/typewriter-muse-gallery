@@ -1,17 +1,64 @@
-import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import ActionSheet from '../components/ActionSheet';
 import BriefCard from '../components/BriefCard';
 import CatchUp from '../components/CatchUp';
+import InfiniteScroll from '../components/InfiniteScroll';
 import PullToRefresh from '../components/PullToRefresh';
+import RaceBanner from '../components/RaceBanner';
 import { SkeletonFeed } from '../components/Skeleton';
 import StoryCard from '../components/StoryCard';
-import TopBar from '../components/TopBar';
 import { api, CATEGORY_LABELS, type Category, type FeedCard } from '../lib/api';
 import { useToggleRead } from '../lib/useToggleRead';
 
 const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 'offroad', 'other'];
 const SHOW_READ_KEY = 'echappee-show-read';
 const VIEW_KEY = 'echappee-view';
+const AUTOSEEN_KEY = 'echappee-briefs-autoseen';
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000);
+  if (diffDays <= 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/** Marks a brief as seen once it has been scrolled past (left the top of the viewport). */
+function AutoSeen({
+  enabled,
+  onSeen,
+  children,
+}: {
+  enabled: boolean;
+  onSeen: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const done = useRef(false);
+  const cb = useRef(onSeen);
+  cb.current = onSeen;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!enabled || !el) return;
+    const io = new IntersectionObserver(([entry]) => {
+      const above =
+        !entry.isIntersecting &&
+        entry.boundingClientRect.bottom < (entry.rootBounds?.top ?? 0) + 1;
+      if (above && !done.current) {
+        done.current = true;
+        cb.current();
+        io.disconnect();
+      }
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [enabled]);
+
+  return <div ref={ref}>{children}</div>;
+}
 
 export default function Feed() {
   const [category, setCategory] = useState<Category | 'all'>('all');
@@ -20,8 +67,13 @@ export default function Feed() {
   const [view, setView] = useState<'cards' | 'briefs'>(() =>
     localStorage.getItem(VIEW_KEY) === 'briefs' ? 'briefs' : 'cards'
   );
+  const autoSeen = localStorage.getItem(AUTOSEEN_KEY) === '1';
   const [undo, setUndo] = useState<{ clusterId: number; title: string } | null>(null);
+  const [sheetCard, setSheetCard] = useState<FeedCard | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stories auto-marked seen this session stay visible (dimmed) instead of
+  // vanishing mid-scroll like a manual swipe does.
+  const autoRead = useRef(new Set<number>());
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -31,8 +83,6 @@ export default function Feed() {
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view);
   }, [view]);
-
-  const status = useQuery({ queryKey: ['status'], queryFn: api.status, refetchInterval: 60_000 });
 
   const feed = useInfiniteQuery({
     queryKey: ['feed', category, !showRead],
@@ -51,6 +101,15 @@ export default function Feed() {
 
   const toggleRead = useToggleRead();
 
+  const muteSource = useMutation({
+    mutationFn: (sourceKey: string) => api.addMute('source', sourceKey),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['feed'] });
+      void queryClient.invalidateQueries({ queryKey: ['mutes'] });
+      void queryClient.invalidateQueries({ queryKey: ['status'] });
+    },
+  });
+
   const handleToggleRead = (card: FeedCard) => {
     const read = !card.read;
     toggleRead.mutate({ clusterId: card.clusterId, read });
@@ -64,8 +123,14 @@ export default function Feed() {
     }
   };
 
+  const handleAutoSeen = (card: FeedCard) => {
+    if (card.read || autoRead.current.has(card.clusterId)) return;
+    autoRead.current.add(card.clusterId);
+    toggleRead.mutate({ clusterId: card.clusterId, read: true });
+  };
+
   const cards = (feed.data?.pages.flatMap((p) => p.cards) ?? []).filter(
-    (c) => showRead || !c.read
+    (c) => showRead || !c.read || autoRead.current.has(c.clusterId)
   );
 
   const handleRefresh = async () => {
@@ -78,12 +143,20 @@ export default function Feed() {
     ]);
   };
 
-  return (
-    <div className="min-h-screen pb-24">
-      <TopBar unread={status.data?.unread} />
+  // One entry per source on the long-pressed card.
+  const sheetSources = sheetCard
+    ? [sheetCard.article, ...sheetCard.alternates].filter(
+        (a, i, arr) => arr.findIndex((x) => x.sourceKey === a.sourceKey) === i
+      )
+    : [];
 
+  let lastDay = '';
+
+  return (
+    <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
       <PullToRefresh onRefresh={handleRefresh}>
       <div className="mx-auto max-w-2xl px-4">
+        <RaceBanner />
         <CatchUp />
         <div className="flex gap-2 overflow-x-auto py-3 -mx-4 px-4 scrollbar-none">
           <div className="flex shrink-0 rounded-full border border-ink/15 dark:border-snow/20 p-0.5">
@@ -143,33 +216,58 @@ export default function Feed() {
           </div>
         )}
 
-        {cards.map((card) =>
-          view === 'briefs' ? (
-            <BriefCard
-              key={card.clusterId + '-' + card.article.id}
-              card={card}
-              onToggleRead={handleToggleRead}
-            />
-          ) : (
-            <StoryCard
-              key={card.clusterId + '-' + card.article.id}
-              card={card}
-              onToggleRead={handleToggleRead}
-            />
-          )
-        )}
+        {cards.map((card) => {
+          const day = dayLabel(card.article.publishedAt);
+          const divider =
+            day !== lastDay ? (
+              <div className="pt-4 pb-1 text-xs font-semibold uppercase tracking-wider opacity-50">
+                {day}
+              </div>
+            ) : null;
+          lastDay = day;
+          const key = card.clusterId + '-' + card.article.id;
+          return (
+            <div key={key}>
+              {divider}
+              {view === 'briefs' ? (
+                <AutoSeen enabled={autoSeen && !showRead} onSeen={() => handleAutoSeen(card)}>
+                  <BriefCard card={card} onToggleRead={handleToggleRead} onLongPress={setSheetCard} />
+                </AutoSeen>
+              ) : (
+                <StoryCard card={card} onToggleRead={handleToggleRead} onLongPress={setSheetCard} />
+              )}
+            </div>
+          );
+        })}
 
-        {feed.hasNextPage && (
-          <button
-            onClick={() => void feed.fetchNextPage()}
-            disabled={feed.isFetchingNextPage}
-            className="my-6 w-full rounded-xl border border-ink/15 dark:border-snow/20 py-3 text-sm font-medium opacity-80 hover:opacity-100 disabled:opacity-40"
-          >
-            {feed.isFetchingNextPage ? 'Loading…' : 'Load more'}
-          </button>
-        )}
+        <InfiniteScroll
+          hasMore={!!feed.hasNextPage}
+          loading={feed.isFetchingNextPage}
+          onMore={() => void feed.fetchNextPage()}
+        />
       </div>
       </PullToRefresh>
+
+      <ActionSheet
+        open={!!sheetCard}
+        title={sheetCard?.article.title}
+        onClose={() => setSheetCard(null)}
+        actions={
+          sheetCard
+            ? [
+                {
+                  label: sheetCard.read ? 'Mark as unread' : 'Mark as read',
+                  onClick: () => handleToggleRead(sheetCard),
+                },
+                ...sheetSources.map((a) => ({
+                  label: `Mute ${a.sourceName}`,
+                  destructive: true,
+                  onClick: () => muteSource.mutate(a.sourceKey),
+                })),
+              ]
+            : []
+        }
+      />
 
       {undo && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 rounded-full bg-ink text-paper dark:bg-snow dark:text-night pl-4 pr-2 py-2 text-sm shadow-lg">

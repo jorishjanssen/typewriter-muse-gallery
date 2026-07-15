@@ -79,6 +79,13 @@ export interface CatchUp {
   oldestUnread: string | null;
 }
 
+export interface RaceBanner {
+  raceId: number | null;
+  raceName?: string;
+  stageLabel?: string;
+  generatedAt?: string;
+}
+
 export interface Mute {
   id: number;
   kind: 'term' | 'source' | 'category';
@@ -137,6 +144,7 @@ export const api = {
   races: () => request<RaceRow[]>('/api/races'),
   catchup: () => request<CatchUp>('/api/catchup'),
   race: (id: number | string) => request<RaceDetail>(`/api/races/${id}`),
+  raceBanner: () => request<RaceBanner>('/api/race-banner'),
   llmModel: () => request<LlmModelSetting>('/api/settings/llm'),
   setLlmModel: (model: string) =>
     request<LlmModelSetting>('/api/settings/llm', { method: 'PUT', body: JSON.stringify({ model }) }),

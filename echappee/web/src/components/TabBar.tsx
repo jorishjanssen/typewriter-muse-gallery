@@ -1,4 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
+import { api } from '../lib/api';
 
 const TABS = [
   { to: '/', label: 'Feed', match: (p: string) => p === '/' || p.startsWith('/article'), icon: <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z" /> },
@@ -10,6 +12,10 @@ const TABS = [
 /** Thumb-reach navigation: fixed bottom tab bar, safe-area aware. */
 export default function TabBar() {
   const { pathname } = useLocation();
+  // The unread badge lives here now that there is no header.
+  const status = useQuery({ queryKey: ['status'], queryFn: api.status, refetchInterval: 60_000 });
+  const unread = status.data?.unread ?? 0;
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-ink/10 dark:border-snow/10 bg-paper/95 dark:bg-night/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex max-w-2xl">
@@ -23,9 +29,16 @@ export default function TabBar() {
                 active ? 'text-accent' : 'opacity-55 hover:opacity-90'
               }`}
             >
-              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {t.icon}
-              </svg>
+              <span className="relative">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {t.icon}
+                </svg>
+                {t.to === '/' && unread > 0 && (
+                  <span className="absolute -right-3.5 -top-1.5 rounded-full bg-accent text-white px-1.5 py-px text-[9px] font-bold leading-tight">
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+              </span>
               {t.label}
             </Link>
           );
