@@ -5,6 +5,8 @@
 @layer base {
   body {
     @apply bg-paper text-ink antialiased;
+    /* Let our pull-to-refresh own top overscroll instead of the browser's. */
+    overscroll-behavior-y: contain;
   }
   @media (prefers-color-scheme: dark) {
     body {
