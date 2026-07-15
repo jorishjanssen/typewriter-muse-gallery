@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, timeAgo, type Mute } from '../lib/api';
 
-const AUTOSEEN_KEY = 'echappee-briefs-autoseen';
+const AUTOSEEN_KEY = 'echappee-autoseen';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -10,7 +10,7 @@ export default function Settings() {
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.sources });
   const mutes = useQuery({ queryKey: ['mutes'], queryFn: api.mutes });
   const [term, setTerm] = useState('');
-  const [autoSeen, setAutoSeen] = useState(() => localStorage.getItem(AUTOSEEN_KEY) === '1');
+  const [autoSeen, setAutoSeen] = useState(() => localStorage.getItem(AUTOSEEN_KEY) !== '0');
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['mutes'] });
@@ -61,10 +61,11 @@ export default function Settings() {
               className="mt-0.5 h-4 w-4 accent-[#e04f1f]"
             />
             <span>
-              <span className="font-medium">Briefs count as seen when scrolled past</span>
+              <span className="font-medium">Scrolling past a story marks it as seen</span>
               <span className="block opacity-60">
-                Twitter-style: in the Briefs view, stories you scroll past are marked read
-                automatically. They stay visible until you refresh.
+                Stories you scroll past leave the unread list — they stay visible, dimmed, until
+                you refresh. Skips are tracked per source so you can see which sources you
+                actually read.
               </span>
             </span>
           </label>
@@ -131,8 +132,23 @@ export default function Settings() {
                   >
                     <span className="font-medium">{s.name}</span>
                     <span className="ml-2 text-xs uppercase opacity-50">{s.lang}</span>
+                    {s.readPct !== null && (
+                      <span
+                        className={`ml-2 rounded-full px-2 py-px text-xs font-semibold ${
+                          s.readPct >= 40
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : s.readPct >= 15
+                              ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                              : 'bg-accent/10 text-accent'
+                        }`}
+                        title={`You opened ${s.opened} of the ${s.opened + s.skipped} stories you triaged`}
+                      >
+                        {s.readPct}% read
+                      </span>
+                    )}
                     <span className="block text-xs opacity-60">
                       {s.articlesTotal} articles
+                      {s.readPct !== null && ` · opened ${s.opened}, skipped ${s.skipped}`}
                       {s.lastOkAt && ` · last ok ${timeAgo(s.lastOkAt)}`}
                       {s.lastError && (
                         <span className="text-accent"> · error: {s.lastError.slice(0, 80)}</span>

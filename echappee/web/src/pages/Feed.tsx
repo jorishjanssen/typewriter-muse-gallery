@@ -14,7 +14,8 @@ import { useToggleRead } from '../lib/useToggleRead';
 const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 'offroad', 'other'];
 const SHOW_READ_KEY = 'echappee-show-read';
 const VIEW_KEY = 'echappee-view';
-const AUTOSEEN_KEY = 'echappee-briefs-autoseen';
+// Scroll-past-marks-seen, both views. On unless explicitly disabled.
+const AUTOSEEN_KEY = 'echappee-autoseen';
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -25,7 +26,7 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-/** Marks a brief as seen once it has been scrolled past (left the top of the viewport). */
+/** Marks a story as seen once it has been scrolled past (left the top of the viewport). */
 function AutoSeen({
   enabled,
   onSeen,
@@ -67,7 +68,7 @@ export default function Feed() {
   const [view, setView] = useState<'cards' | 'briefs'>(() =>
     localStorage.getItem(VIEW_KEY) === 'briefs' ? 'briefs' : 'cards'
   );
-  const autoSeen = localStorage.getItem(AUTOSEEN_KEY) === '1';
+  const autoSeen = localStorage.getItem(AUTOSEEN_KEY) !== '0';
   const [undo, setUndo] = useState<{ clusterId: number; title: string } | null>(null);
   const [sheetCard, setSheetCard] = useState<FeedCard | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -229,13 +230,13 @@ export default function Feed() {
           return (
             <div key={key}>
               {divider}
-              {view === 'briefs' ? (
-                <AutoSeen enabled={autoSeen && !showRead} onSeen={() => handleAutoSeen(card)}>
+              <AutoSeen enabled={autoSeen && !showRead} onSeen={() => handleAutoSeen(card)}>
+                {view === 'briefs' ? (
                   <BriefCard card={card} onToggleRead={handleToggleRead} onLongPress={setSheetCard} />
-                </AutoSeen>
-              ) : (
-                <StoryCard card={card} onToggleRead={handleToggleRead} onLongPress={setSheetCard} />
-              )}
+                ) : (
+                  <StoryCard card={card} onToggleRead={handleToggleRead} onLongPress={setSheetCard} />
+                )}
+              </AutoSeen>
             </div>
           );
         })}

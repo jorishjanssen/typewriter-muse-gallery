@@ -198,6 +198,57 @@ describe('races', () => {
   });
 });
 
+describe('engagement tracking', () => {
+  it('distinguishes opened from skipped and reports per-source read rates', async () => {
+    await db.query('UPDATE articles SET read_at = NULL, opened_at = NULL, seen_at = NULL', []);
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const grouped = feed.cards.find((c) => c.alternates.length === 1); // g1 (cyclingnews) + g2 (wielerflits)
+    const solo = feed.cards.find((c) => c.alternates.length === 0); // g3 (bikeradar)
+
+    // Opening an article in the reader = read.
+    await app.inject({ method: 'POST', url: `/api/articles/${grouped.article.id}/read` });
+    // Scrolling past / swiping a card = the whole cluster is skipped —
+    // except articles that were already opened.
+    await app.inject({ method: 'POST', url: `/api/clusters/${grouped.clusterId}/read` });
+    await app.inject({ method: 'POST', url: `/api/clusters/${solo.clusterId}/read` });
+
+    const rows = await db.query<{ guid: string; opened_at: string | null; seen_at: string | null }>(
+      'SELECT guid, opened_at, seen_at FROM articles ORDER BY guid'
+    );
+    const byGuid = Object.fromEntries(rows.map((r) => [r.guid, r]));
+    expect(byGuid.g1.opened_at).not.toBeNull();
+    expect(byGuid.g1.seen_at).toBeNull();
+    expect(byGuid.g2.opened_at).toBeNull();
+    expect(byGuid.g2.seen_at).not.toBeNull();
+    expect(byGuid.g3.seen_at).not.toBeNull();
+
+    const sources = (await app.inject({ method: 'GET', url: '/api/sources' })).json() as any[];
+    const cn = sources.find((s) => s.key === 'cyclingnews');
+    expect(cn.opened).toBe(1);
+    expect(cn.skipped).toBe(0);
+    expect(cn.readPct).toBe(100);
+    const br = sources.find((s) => s.key === 'bikeradar');
+    expect(br.opened).toBe(0);
+    expect(br.skipped).toBe(1);
+    expect(br.readPct).toBe(0);
+    // No triage yet for a source → no percentage rather than a misleading 0.
+    expect(sources.find((s) => s.key === 'velo').readPct).toBeNull();
+
+    // Undo retracts the skip judgment; bulk read-all stamps neither.
+    await app.inject({ method: 'POST', url: `/api/clusters/${solo.clusterId}/unread` });
+    const after = await db.query<{ seen_at: string | null }>(
+      "SELECT seen_at FROM articles WHERE guid = 'g3'"
+    );
+    expect(after[0].seen_at).toBeNull();
+    await app.inject({ method: 'POST', url: '/api/read-all' });
+    const bulk = await db.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM articles WHERE guid = 'g3' AND seen_at IS NOT NULL"
+    );
+    expect(bulk[0].n).toBe(0);
+    await db.query('UPDATE articles SET read_at = NULL', []);
+  });
+});
+
 describe('cluster brief in feed', () => {
   it('exposes the merged brief on multi-source cards only', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };

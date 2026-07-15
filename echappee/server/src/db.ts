@@ -59,12 +59,19 @@ CREATE TABLE IF NOT EXISTS articles (
   brief TEXT,
   importance INTEGER,
   read_at TEXT,
+  opened_at TEXT,
+  seen_at TEXT,
   UNIQUE(source_key, guid)
 );
 
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS riders_at TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS brief TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS importance INTEGER;
+-- Engagement tracking: opened_at = actually opened in the reader;
+-- seen_at = triaged without opening (scrolled past or swiped away).
+-- read_at stays the unread-list driver, set by either path (or read-all).
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS opened_at TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS seen_at TEXT;
 
 CREATE TABLE IF NOT EXISTS races (
   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
