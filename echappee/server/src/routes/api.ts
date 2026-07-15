@@ -267,6 +267,28 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     };
   });
 
+  // Feed banner: the most recently generated watch guide, if it's fresh.
+  // Spoiler-safe — only the race identity, never guide content or articles.
+  app.get('/api/race-banner', async () => {
+    const cutoff = new Date(Date.now() - 36 * 3600_000).toISOString();
+    const row = (
+      await db.query<{ id: number; race_name: string; stage_label: string; generated_at: string }>(
+        `SELECT r.id, r.race_name, r.stage_label, w.generated_at
+         FROM watch_guides w JOIN races r ON r.id = w.race_id
+         WHERE w.generated_at > $1
+         ORDER BY w.generated_at DESC LIMIT 1`,
+        [cutoff]
+      )
+    )[0];
+    if (!row) return { raceId: null };
+    return {
+      raceId: row.id,
+      raceName: row.race_name,
+      stageLabel: row.stage_label,
+      generatedAt: row.generated_at,
+    };
+  });
+
   // ---- Read state -----------------------------------------------------------
   app.post<{ Params: { id: string } }>('/api/articles/:id/read', async (req) => {
     await db.query('UPDATE articles SET read_at = $1 WHERE id = $2 AND read_at IS NULL', [

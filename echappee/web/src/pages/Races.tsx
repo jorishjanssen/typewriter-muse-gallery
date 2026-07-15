@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import TopBar, { IconButton } from '../components/TopBar';
 import { api, type RaceRow } from '../lib/api';
 
 export default function Races() {
@@ -14,16 +13,7 @@ export default function Races() {
   }
 
   return (
-    <div className="min-h-screen pb-24">
-      <TopBar
-        right={
-          <IconButton label="Back to feed" to="/">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M19 12H5m7-7-7 7 7 7" />
-            </svg>
-          </IconButton>
-        }
-      />
+    <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
       <div className="mx-auto max-w-2xl px-4 py-4">
         <h1 className="font-serif text-2xl font-bold mb-1">Races</h1>
         <p className="text-sm opacity-60 mb-4">

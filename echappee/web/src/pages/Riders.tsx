@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import TopBar, { IconButton } from '../components/TopBar';
 import { api } from '../lib/api';
 
 export default function Riders() {
@@ -13,16 +12,7 @@ export default function Riders() {
   );
 
   return (
-    <div className="min-h-screen pb-24">
-      <TopBar
-        right={
-          <IconButton label="Back to feed" to="/">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M19 12H5m7-7-7 7 7 7" />
-            </svg>
-          </IconButton>
-        }
-      />
+    <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
       <div className="mx-auto max-w-2xl px-4 py-4">
         <h1 className="font-serif text-2xl font-bold mb-3">Riders</h1>
         <input

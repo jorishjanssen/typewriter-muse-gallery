@@ -1,8 +1,9 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import BackLink from '../components/BackLink';
+import InfiniteScroll from '../components/InfiniteScroll';
 import StoryCard from '../components/StoryCard';
-import TopBar, { IconButton } from '../components/TopBar';
 import { api, type FeedCard } from '../lib/api';
 import { useToggleRead } from '../lib/useToggleRead';
 
@@ -29,17 +30,9 @@ export default function RaceStage() {
   const cards = feed.data?.pages.flatMap((p) => p.cards) ?? [];
 
   return (
-    <div className="min-h-screen pb-24">
-      <TopBar
-        right={
-          <IconButton label="Back to races" to="/races">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M19 12H5m7-7-7 7 7 7" />
-            </svg>
-          </IconButton>
-        }
-      />
-      <div className="mx-auto max-w-2xl px-4 py-4">
+    <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
+      <div className="mx-auto max-w-2xl px-4 py-2">
+        <BackLink label="Races" to="/races" />
         {race.isLoading && <p className="py-10 text-center opacity-60">Loading…</p>}
         {r && (
           <>
@@ -105,14 +98,11 @@ export default function RaceStage() {
                     onToggleRead={handleToggleRead}
                   />
                 ))}
-                {feed.hasNextPage && (
-                  <button
-                    onClick={() => void feed.fetchNextPage()}
-                    className="my-6 w-full rounded-xl border border-ink/15 dark:border-snow/20 py-3 text-sm font-medium opacity-80"
-                  >
-                    Load more
-                  </button>
-                )}
+                <InfiniteScroll
+                  hasMore={!!feed.hasNextPage}
+                  loading={feed.isFetchingNextPage}
+                  onMore={() => void feed.fetchNextPage()}
+                />
               </>
             )}
           </>

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import TopBar, { IconButton } from '../components/TopBar';
 import { api, timeAgo, type Mute } from '../lib/api';
+
+const AUTOSEEN_KEY = 'echappee-briefs-autoseen';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -9,6 +10,7 @@ export default function Settings() {
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.sources });
   const mutes = useQuery({ queryKey: ['mutes'], queryFn: api.mutes });
   const [term, setTerm] = useState('');
+  const [autoSeen, setAutoSeen] = useState(() => localStorage.getItem(AUTOSEEN_KEY) === '1');
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['mutes'] });
@@ -32,17 +34,9 @@ export default function Settings() {
   const sourceMutes = mutes.data?.filter((m) => m.kind === 'source') ?? [];
 
   return (
-    <div className="min-h-screen pb-24">
-      <TopBar
-        right={
-          <IconButton label="Back to feed" to="/">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M19 12H5m7-7-7 7 7 7" />
-            </svg>
-          </IconButton>
-        }
-      />
+    <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
       <div className="mx-auto max-w-2xl px-4 py-6 space-y-10">
+        <h1 className="font-serif text-2xl font-bold -mb-4">Settings</h1>
         <section>
           <h2 className="font-serif text-xl font-bold mb-3">Reading</h2>
           <button
@@ -56,6 +50,24 @@ export default function Settings() {
               {status.data.unread} unread of {status.data.articles} articles.
             </p>
           )}
+          <label className="mt-4 flex items-start gap-2.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoSeen}
+              onChange={(e) => {
+                setAutoSeen(e.target.checked);
+                localStorage.setItem(AUTOSEEN_KEY, e.target.checked ? '1' : '0');
+              }}
+              className="mt-0.5 h-4 w-4 accent-[#e04f1f]"
+            />
+            <span>
+              <span className="font-medium">Briefs count as seen when scrolled past</span>
+              <span className="block opacity-60">
+                Twitter-style: in the Briefs view, stories you scroll past are marked read
+                automatically. They stay visible until you refresh.
+              </span>
+            </span>
+          </label>
         </section>
 
         <section>
