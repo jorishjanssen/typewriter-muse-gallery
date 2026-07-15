@@ -227,6 +227,85 @@ describe('cluster merge pass', () => {
   });
 });
 
+describe('cluster briefs', () => {
+  it('parseClusterBrief accepts a real brief and rejects junk', async () => {
+    const { parseClusterBrief } = await import('../src/llm.js');
+    expect(
+      parseClusterBrief('{"brief":"Pogacar wint de Waalse Pijl na een late solo; concurrenten zagen hem pas op de streep terug."}')
+    ).toContain('Waalse Pijl');
+    expect(parseClusterBrief('{"brief":"too short"}')).toBeNull();
+    expect(parseClusterBrief('no json')).toBeNull();
+  });
+
+  it('generates for multi-article clusters only, once per size, and again when the cluster grows', async () => {
+    const { refreshClusterBriefs } = await import('../src/pipeline/clusterBriefs.js');
+    const db = await createMemoryDb();
+    const cn = getSource('cyclingnews')!;
+    const wf = getSource('wielerflits')!;
+    const extracted = { contentHtml: '<p>x</p>', contentText: 'x '.repeat(150), imageUrl: null, author: null };
+    const base = { author: null, publishedAt: new Date().toISOString(), excerpt: null, imageUrl: null };
+    // One two-source story (title overlap clusters them) and one solo story.
+    await ingestArticle(db, cn, {
+      ...base, guid: 'b1', url: 'https://example.com/b1',
+      title: 'Pogacar storms to solo victory at Fleche Wallonne on the Mur de Huy',
+    }, extracted);
+    await ingestArticle(db, wf, {
+      ...base, guid: 'b2', url: 'https://example.com/b2',
+      title: 'Pogacar wins solo at Fleche Wallonne after attack on the Mur de Huy',
+    }, extracted);
+    await ingestArticle(db, cn, {
+      ...base, guid: 'b3', url: 'https://example.com/b3',
+      title: 'New wireless groupset leaks in race photos',
+    }, extracted);
+
+    const calls: { n: number; lang: string }[] = [];
+    const generate = async (articles: { title: string; gist: string | null }[], lang: string) => {
+      calls.push({ n: articles.length, lang });
+      return 'Merged brief covering every source of this story in one post.';
+    };
+
+    expect(await refreshClusterBriefs(db, { generate })).toBe(1);
+    expect(calls).toEqual([{ n: 2, lang: 'en' }]);
+    const cluster = await db.query<{ brief: string; brief_article_count: number }>(
+      'SELECT brief, brief_article_count FROM clusters WHERE brief IS NOT NULL'
+    );
+    expect(cluster).toHaveLength(1);
+    expect(cluster[0].brief_article_count).toBe(2);
+
+    // Same size → nothing to do.
+    expect(await refreshClusterBriefs(db, { generate })).toBe(0);
+    expect(calls).toHaveLength(1);
+
+    // A third source joins the story → the brief regenerates from 3 articles.
+    await ingestArticle(db, getSource('velo')!, {
+      ...base, guid: 'b4', url: 'https://example.com/b4',
+      title: 'Solo victory for Pogacar at Fleche Wallonne on the Mur de Huy',
+    }, extracted);
+    expect(await refreshClusterBriefs(db, { generate })).toBe(1);
+    expect(calls[1].n).toBe(3);
+    await db.close();
+  });
+
+  it('keeps clusters without a brief when the LLM fails', async () => {
+    const { refreshClusterBriefs } = await import('../src/pipeline/clusterBriefs.js');
+    const db = await createMemoryDb();
+    const extracted = { contentHtml: '<p>x</p>', contentText: 'x '.repeat(150), imageUrl: null, author: null };
+    const base = { author: null, publishedAt: new Date().toISOString(), excerpt: null, imageUrl: null };
+    await ingestArticle(db, getSource('cyclingnews')!, {
+      ...base, guid: 'f1', url: 'https://example.com/f1',
+      title: 'Pogacar storms to solo victory at Fleche Wallonne on the Mur de Huy',
+    }, extracted);
+    await ingestArticle(db, getSource('wielerflits')!, {
+      ...base, guid: 'f2', url: 'https://example.com/f2',
+      title: 'Pogacar wins solo at Fleche Wallonne after attack on the Mur de Huy',
+    }, extracted);
+    expect(await refreshClusterBriefs(db, { generate: async () => null })).toBe(0);
+    // Still pending, so the next run retries.
+    expect(await refreshClusterBriefs(db, { generate: async () => 'A merged brief that is long enough.' })).toBe(1);
+    await db.close();
+  });
+});
+
 describe('parseWatchGuide', () => {
   it('parses tiers and clamps excitement; rejects junk', async () => {
     const { parseWatchGuide } = await import('../src/llm.js');

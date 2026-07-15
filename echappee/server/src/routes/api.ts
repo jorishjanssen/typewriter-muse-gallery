@@ -128,6 +128,18 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       else clusters.set(row.cluster_id, [row]);
     }
 
+    // Merged multi-source briefs for the clusters on this page.
+    const clusterIds = [...clusters.keys()];
+    const clusterBriefs = new Map<number, string>();
+    if (clusterIds.length > 0) {
+      const briefRows = await db.query<{ id: number; brief: string | null }>(
+        `SELECT id, brief FROM clusters
+         WHERE brief IS NOT NULL AND id IN (${clusterIds.map((_, i) => `$${i + 1}`).join(',')})`,
+        clusterIds
+      );
+      for (const r of briefRows) if (r.brief) clusterBriefs.set(r.id, r.brief);
+    }
+
     const cards = [];
     let lastPublished: string | null = null;
     for (const group of clusters.values()) {
@@ -142,6 +154,9 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         clusterId: best.cluster_id,
         article: articleCard(best),
         alternates: group.filter((r) => r.id !== best.id).map(articleCard),
+        // Only meaningful for multi-source cards; a lone visible article
+        // (e.g. after muting a source) falls back to its own brief.
+        clusterBrief: group.length > 1 ? (clusterBriefs.get(best.cluster_id) ?? null) : null,
         read: group.every((r) => r.read_at !== null),
       });
       lastPublished = group[group.length - 1].published_at;

@@ -24,6 +24,8 @@ export interface FeedCard {
   clusterId: number;
   article: ArticleCard;
   alternates: ArticleCard[];
+  /** Merged multi-source brief for the whole story, when generated. */
+  clusterBrief: string | null;
   read: boolean;
 }
 
