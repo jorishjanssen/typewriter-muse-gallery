@@ -26,6 +26,17 @@ const CATEGORIES: Category[] = ['racing', 'transfers', 'gear', 'offroad', 'other
 
 let client: OpenAI | null = null;
 
+// Model override from the settings table (set by the UI); wins over env.
+let modelOverride: string | null = null;
+
+export function setLlmModel(model: string | null | undefined): void {
+  modelOverride = model?.trim() ? model.trim() : null;
+}
+
+export function currentLlmModel(): string {
+  return modelOverride ?? config.llm.model;
+}
+
 function getClient(): OpenAI {
   if (!client) {
     client = new OpenAI({
@@ -71,7 +82,7 @@ export async function enrichArticle(input: {
 
   try {
     const res = await getClient().chat.completions.create({
-      model: config.llm.model,
+      model: currentLlmModel(),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },

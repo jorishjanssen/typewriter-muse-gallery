@@ -140,6 +140,8 @@ export default function Settings() {
           </ul>
         </section>
 
+        <ModelSection />
+
         <section>
           <h2 className="font-serif text-xl font-bold mb-1">AI pipeline</h2>
           {status.data && (
@@ -147,14 +149,19 @@ export default function Settings() {
               {status.data.llm.enabled ? (
                 <>
                   Enabled — model <code>{status.data.llm.model}</code> via{' '}
-                  <code>{status.data.llm.baseUrl}</code>. Summaries, categories and story
+                  <code>{status.data.llm.baseUrl}</code>. Summaries, categories, riders and story
                   clustering are AI-assisted.
+                </>
+              ) : status.data.managedScraper ? (
+                <>
+                  Enrichment runs inside the scheduled scraper (GitHub Actions) with model{' '}
+                  <code>{status.data.llm.model}</code> — summaries, riders and clustering are
+                  applied there as new articles arrive.
                 </>
               ) : (
                 <>
-                  Disabled. Set <code>LLM_API_KEY</code> (and optionally <code>LLM_BASE_URL</code>,{' '}
-                  <code>LLM_MODEL</code> — any OpenAI-compatible provider, DeepSeek by default) to
-                  get summaries and smarter clustering. Keyword-based categories are used meanwhile.
+                  Disabled. Set <code>AI_GATEWAY_API_KEY</code> or <code>LLM_API_KEY</code> to get
+                  summaries, riders and smarter clustering.
                 </>
               )}{' '}
               Sources refresh every {status.data.scrapeIntervalMinutes} minutes.
@@ -163,5 +170,94 @@ export default function Settings() {
         </section>
       </div>
     </div>
+  );
+}
+
+const MODEL_PRESETS = [
+  { slug: 'deepseek/deepseek-v3.1', label: 'DeepSeek V3.1', note: 'free tier' },
+  { slug: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', note: 'paid credits' },
+  { slug: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5', note: 'paid credits' },
+  { slug: 'openai/gpt-4o-mini', label: 'GPT-4o mini', note: 'paid credits' },
+];
+
+function ModelSection() {
+  const queryClient = useQueryClient();
+  const setting = useQuery({ queryKey: ['llm-model'], queryFn: api.llmModel });
+  const [custom, setCustom] = useState('');
+
+  const save = useMutation({
+    mutationFn: (model: string) => api.setLlmModel(model),
+    onSuccess: () => {
+      setCustom('');
+      void queryClient.invalidateQueries({ queryKey: ['llm-model'] });
+      void queryClient.invalidateQueries({ queryKey: ['status'] });
+    },
+  });
+
+  const active = setting.data?.model;
+
+  return (
+    <section>
+      <h2 className="font-serif text-xl font-bold mb-1">AI model</h2>
+      <p className="text-sm opacity-60 mb-3">
+        Used for summaries, categories, rider extraction and story clustering. Changes apply from
+        the next scrape (within ~30 minutes). Some models need paid AI Gateway credits.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {MODEL_PRESETS.map((m) => (
+          <button
+            key={m.slug}
+            onClick={() => save.mutate(m.slug)}
+            disabled={save.isPending}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
+              active === m.slug
+                ? 'bg-accent text-white border-transparent'
+                : 'border-ink/15 dark:border-snow/20 opacity-70 hover:opacity-100'
+            }`}
+          >
+            {m.label} <span className="opacity-60 text-xs">· {m.note}</span>
+          </button>
+        ))}
+      </div>
+      <form
+        className="mt-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (custom.trim()) save.mutate(custom.trim());
+        }}
+      >
+        <input
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          placeholder="Custom slug, e.g. anthropic/claude-sonnet-4.5"
+          className="flex-1 rounded-xl border border-ink/15 dark:border-snow/20 bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
+        />
+        <button
+          disabled={save.isPending || !custom.trim()}
+          className="rounded-xl bg-ink text-paper dark:bg-snow dark:text-night px-4 text-sm font-medium disabled:opacity-40"
+        >
+          Use
+        </button>
+      </form>
+      {setting.data && (
+        <p className="mt-2 text-sm opacity-70">
+          Active: <code>{setting.data.model}</code>
+          {setting.data.custom && setting.data.custom !== setting.data.defaultModel && (
+            <>
+              {' · '}
+              <button
+                onClick={() => save.mutate('')}
+                className="underline underline-offset-2 hover:text-accent"
+              >
+                reset to default ({setting.data.defaultModel})
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {save.isError && (
+        <p className="mt-2 text-sm text-accent">Could not save — check the model id.</p>
+      )}
+    </section>
   );
 }
