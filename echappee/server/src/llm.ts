@@ -195,6 +195,59 @@ export function parseEnrichment(raw: string, clusterCount: number): Enrichment |
   }
 }
 
+const MERGE_PROMPT = `You deduplicate story clusters for a cycling news aggregator.
+You get two groups of article headlines (with summaries where available, possibly in different languages).
+Respond with ONLY a JSON object: {"same": true | false}
+same=true ONLY when both groups cover the SAME concrete news event — e.g. multiple outlets reporting the same race result, or the same transfer announcement.
+same=false when in doubt, and always for: different races or different stages, a preview vs a report of the race, a result vs a separate interview/reaction/analysis about it, or the same rider appearing in unrelated news.
+A wrong merge hides a story from the reader; a missed merge only shows a duplicate. Be conservative.`;
+
+export interface ClusterDigest {
+  /** Article titles, oldest first. */
+  titles: string[];
+  summary: string | null;
+}
+
+/** Ask whether two existing clusters cover the same news event. Null on LLM failure. */
+export async function judgeClusterMerge(a: ClusterDigest, b: ClusterDigest): Promise<boolean | null> {
+  if (!llmEnabled()) return null;
+  const render = (label: string, c: ClusterDigest) =>
+    [
+      `CLUSTER ${label}:`,
+      ...c.titles.map((t) => `- ${t}`),
+      c.summary ? `Summary: ${c.summary.slice(0, 300)}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  try {
+    const res = await getClient().chat.completions.create({
+      model: currentLlmModel(),
+      messages: [
+        { role: 'system', content: MERGE_PROMPT },
+        { role: 'user', content: `${render('A', a)}\n\n${render('B', b)}` },
+      ],
+      temperature: 0,
+      max_tokens: 20,
+    });
+    return parseMergeVerdict(res.choices[0]?.message?.content ?? '');
+  } catch (err) {
+    console.error('[llm] merge judgement failed:', (err as Error).message);
+    return null;
+  }
+}
+
+/** Exported for tests. Null unless the answer is an unambiguous boolean. */
+export function parseMergeVerdict(raw: string): boolean | null {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]) as { same?: unknown };
+    return typeof obj.same === 'boolean' ? obj.same : null;
+  } catch {
+    return null;
+  }
+}
+
 const GUIDE_PROMPT = `You write SPOILER-FREE viewing guides for people who watch bike races on replay.
 You get journalists' race reports of one finished race day. Respond with ONLY JSON:
 {

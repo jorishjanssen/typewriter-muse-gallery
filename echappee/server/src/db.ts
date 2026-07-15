@@ -92,6 +92,16 @@ CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC)
 CREATE INDEX IF NOT EXISTS idx_articles_cluster ON articles(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
 
+-- Cluster pairs already judged by the merge pass, so a rejected pair is
+-- never sent to the LLM twice. Merged/deleted clusters cascade their rows.
+CREATE TABLE IF NOT EXISTS merge_reviews (
+  cluster_a INTEGER NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+  cluster_b INTEGER NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+  same BOOLEAN NOT NULL,
+  checked_at TEXT NOT NULL,
+  PRIMARY KEY (cluster_a, cluster_b)
+);
+
 CREATE TABLE IF NOT EXISTS mutes (
   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('term','source','category')),

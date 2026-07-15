@@ -132,6 +132,101 @@ describe('parseEnrichment', () => {
   });
 });
 
+describe('parseMergeVerdict', () => {
+  it('accepts only unambiguous booleans', async () => {
+    const { parseMergeVerdict } = await import('../src/llm.js');
+    expect(parseMergeVerdict('{"same": true}')).toBe(true);
+    expect(parseMergeVerdict('```json\n{"same": false}\n```')).toBe(false);
+    expect(parseMergeVerdict('{"same": "yes"}')).toBeNull();
+    expect(parseMergeVerdict('probably the same')).toBeNull();
+  });
+});
+
+describe('cluster merge pass', () => {
+  async function seedTwoClusters(db: Awaited<ReturnType<typeof createMemoryDb>>) {
+    const { saveRiders } = await import('../src/pipeline/refresh.js');
+    const cn = getSource('cyclingnews')!;
+    const wf = getSource('wielerflits')!;
+    const extracted = { contentHtml: '<p>body</p>', contentText: 'body '.repeat(60), imageUrl: null, author: null };
+    const base = { author: null, publishedAt: new Date().toISOString(), excerpt: null, imageUrl: null };
+    // Cross-language titles: no token overlap, so they land in separate clusters.
+    const id1 = await ingestArticle(db, cn, {
+      ...base, guid: 'm1', url: 'https://example.com/m1',
+      title: 'Del Toro takes maiden monument at Il Lombardia',
+    }, extracted);
+    const id2 = await ingestArticle(db, wf, {
+      ...base, guid: 'm2', url: 'https://example.com/m2',
+      title: 'Mexicaan soleert naar zege in Ronde van Lombardije',
+    }, extracted);
+    await saveRiders(db, id1, ['Isaac del Toro']);
+    await saveRiders(db, id2, ['Isaac del Toro']);
+    const clusters = await db.query<{ id: number; cluster_id: number }>(
+      'SELECT id, cluster_id FROM articles ORDER BY id'
+    );
+    return { id1, id2, c1: clusters[0].cluster_id, c2: clusters[1].cluster_id };
+  }
+
+  it('proposes rider-sharing cross-cluster pairs and remembers verdicts', async () => {
+    const { findMergeCandidates, mergeDuplicateClusters } = await import('../src/pipeline/merge.js');
+    const db = await createMemoryDb();
+    const { c1, c2 } = await seedTwoClusters(db);
+    expect(c1).not.toBe(c2);
+
+    expect(await findMergeCandidates(db)).toEqual([{ a: c1, b: c2 }]);
+
+    // Judge says "different" — nothing merges and the pair is never re-asked.
+    let calls = 0;
+    const no = async () => { calls++; return false; };
+    expect(await mergeDuplicateClusters(db, { judge: no })).toBe(0);
+    expect(await mergeDuplicateClusters(db, { judge: no })).toBe(0);
+    expect(calls).toBe(1);
+    expect(await findMergeCandidates(db)).toEqual([]);
+    await db.close();
+  });
+
+  it('merges a confirmed pair into the older cluster', async () => {
+    const { mergeDuplicateClusters } = await import('../src/pipeline/merge.js');
+    const db = await createMemoryDb();
+    const { c1, c2 } = await seedTwoClusters(db);
+
+    expect(await mergeDuplicateClusters(db, { judge: async () => true })).toBe(1);
+    const rows = await db.query<{ cluster_id: number }>('SELECT cluster_id FROM articles');
+    expect(rows.map((r) => r.cluster_id)).toEqual([c1, c1]);
+    expect(await db.query('SELECT 1 FROM clusters WHERE id = $1', [c2])).toHaveLength(0);
+    await db.close();
+  });
+
+  it('keeps unresolved pairs (LLM failure) for a later run', async () => {
+    const { findMergeCandidates, mergeDuplicateClusters } = await import('../src/pipeline/merge.js');
+    const db = await createMemoryDb();
+    await seedTwoClusters(db);
+    expect(await mergeDuplicateClusters(db, { judge: async () => null })).toBe(0);
+    expect(await findMergeCandidates(db)).toHaveLength(1);
+    await db.close();
+  });
+
+  it('proposes reports of the same race day as candidates', async () => {
+    const { findMergeCandidates } = await import('../src/pipeline/merge.js');
+    const { linkRace } = await import('../src/pipeline/refresh.js');
+    const db = await createMemoryDb();
+    const cn = getSource('cyclingnews')!;
+    const wf = getSource('wielerflits')!;
+    const extracted = { contentHtml: '<p>x</p>', contentText: 'x '.repeat(120), imageUrl: null, author: null };
+    const base = { author: null, publishedAt: new Date().toISOString(), excerpt: null, imageUrl: null };
+    const id1 = await ingestArticle(db, cn, {
+      ...base, guid: 'r1', url: 'https://example.com/r1', title: 'Brutal crosswinds split the peloton',
+    }, extracted);
+    const id2 = await ingestArticle(db, wf, {
+      ...base, guid: 'r2', url: 'https://example.com/r2', title: 'Waaiers zorgen voor chaos in de finale',
+    }, extracted);
+    const race = { name: 'Tour de France', year: 2026, stage: 3, date: '2026-07-07', kind: 'report' as const };
+    await linkRace(db, id1, race);
+    await linkRace(db, id2, race);
+    expect(await findMergeCandidates(db)).toHaveLength(1);
+    await db.close();
+  });
+});
+
 describe('parseWatchGuide', () => {
   it('parses tiers and clamps excitement; rejects junk', async () => {
     const { parseWatchGuide } = await import('../src/llm.js');
