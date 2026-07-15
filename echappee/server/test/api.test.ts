@@ -198,6 +198,25 @@ describe('races', () => {
   });
 });
 
+describe('cluster brief in feed', () => {
+  it('exposes the merged brief on multi-source cards only', async () => {
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const grouped = feed.cards.find((c) => c.alternates.length === 1);
+    const solo = feed.cards.find((c) => c.alternates.length === 0);
+    expect(grouped.clusterBrief).toBeNull();
+
+    await db.query('UPDATE clusters SET brief = $1, brief_article_count = 2 WHERE id = $2', [
+      'Merged coverage of the story from every source.',
+      grouped.clusterId,
+    ]);
+    const after = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    expect(after.cards.find((c) => c.clusterId === grouped.clusterId).clusterBrief).toBe(
+      'Merged coverage of the story from every source.'
+    );
+    expect(after.cards.find((c) => c.clusterId === solo.clusterId).clusterBrief).toBeNull();
+  });
+});
+
 describe('GET /api/race-banner', () => {
   it('surfaces a fresh watch guide and hides stale ones', async () => {
     // No guides yet.

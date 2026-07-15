@@ -14,7 +14,9 @@ export default function BriefCard({
   onLongPress?: (card: FeedCard) => void;
 }) {
   const a = card.article;
-  const text = a.brief ?? a.summary ?? a.excerpt ?? a.title;
+  // A multi-source story shows the merged brief covering every outlet's
+  // coverage; single-source stories use the article's own brief.
+  const text = card.clusterBrief ?? a.brief ?? a.summary ?? a.excerpt ?? a.title;
   const longPress = useLongPress(() => onLongPress?.(card));
   return (
     <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>

@@ -195,6 +195,59 @@ export function parseEnrichment(raw: string, clusterCount: number): Enrichment |
   }
 }
 
+const CLUSTER_BRIEF_PROMPT = `You write news briefs for a personal cycling news aggregator.
+You get several outlets' coverage of the SAME news event (possibly in different languages).
+Respond with ONLY a JSON object: {"brief": "..."}
+The brief: ONE punchy standalone post of AT MOST 360 characters that merges the coverage —
+lead with what happened, then fold in noteworthy details that only some outlets mention.
+No hashtags, no "sources say", no outlet names. Write it in the language requested by the user.`;
+
+export interface ClusterBriefInput {
+  title: string;
+  /** Per-article brief or summary, when available. */
+  gist: string | null;
+}
+
+/** Merge multiple articles' coverage of one event into a single brief. */
+export async function generateClusterBrief(
+  articles: ClusterBriefInput[],
+  lang: string
+): Promise<string | null> {
+  if (!llmEnabled()) return null;
+  const body = articles
+    .slice(0, 4)
+    .map((a, i) => `ARTICLE ${i + 1}: ${a.title}${a.gist ? `\n${a.gist.slice(0, 400)}` : ''}`)
+    .join('\n\n');
+  try {
+    const res = await getClient().chat.completions.create({
+      model: currentLlmModel(),
+      messages: [
+        { role: 'system', content: CLUSTER_BRIEF_PROMPT },
+        { role: 'user', content: `Write the brief in language: ${lang}\n\n${body}` },
+      ],
+      temperature: 0.2,
+      max_tokens: 250,
+    });
+    return parseClusterBrief(res.choices[0]?.message?.content ?? '');
+  } catch (err) {
+    console.error('[llm] cluster brief failed:', (err as Error).message);
+    return null;
+  }
+}
+
+/** Exported for tests. */
+export function parseClusterBrief(raw: string): string | null {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]) as { brief?: unknown };
+    if (typeof obj.brief !== 'string' || obj.brief.trim().length < 20) return null;
+    return obj.brief.trim().slice(0, 400);
+  } catch {
+    return null;
+  }
+}
+
 const MERGE_PROMPT = `You deduplicate story clusters for a cycling news aggregator.
 You get two groups of article headlines (with summaries where available, possibly in different languages).
 Respond with ONLY a JSON object: {"same": true | false}
