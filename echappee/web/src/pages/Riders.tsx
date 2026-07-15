@@ -13,7 +13,7 @@ export default function Riders() {
   );
 
   return (
-    <div className="min-h-screen pb-16">
+    <div className="min-h-screen pb-24">
       <TopBar
         right={
           <IconButton label="Back to feed" to="/">

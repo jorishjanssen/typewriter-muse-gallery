@@ -50,12 +50,14 @@ CREATE TABLE IF NOT EXISTS articles (
   enriched_at TEXT,
   riders_at TEXT,
   brief TEXT,
+  importance INTEGER,
   read_at TEXT,
   UNIQUE(source_key, guid)
 );
 
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS riders_at TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS brief TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS importance INTEGER;
 
 CREATE TABLE IF NOT EXISTS races (
   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

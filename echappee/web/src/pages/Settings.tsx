@@ -32,7 +32,7 @@ export default function Settings() {
   const sourceMutes = mutes.data?.filter((m) => m.kind === 'source') ?? [];
 
   return (
-    <div className="min-h-screen pb-16">
+    <div className="min-h-screen pb-24">
       <TopBar
         right={
           <IconButton label="Back to feed" to="/">

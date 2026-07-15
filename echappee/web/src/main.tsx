@@ -5,6 +5,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
+import TabBar from './components/TabBar';
 import Feed from './pages/Feed';
 import Reader from './pages/Reader';
 import RaceStage from './pages/RaceStage';
@@ -48,6 +49,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/rider/:key" element={<RiderFeed />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
+        <TabBar />
       </BrowserRouter>
     </PersistQueryClientProvider>
   </React.StrictMode>
