@@ -14,6 +14,7 @@ export interface ArticleCard {
   category: Category;
   summary: string | null;
   hasFullText: boolean;
+  readingMinutes: number | null;
   read: boolean;
 }
 

@@ -57,6 +57,8 @@ describe('GET /api/feed', () => {
     expect(pogacar).toBeDefined();
     // Best = the one with substantial full text (g1), alternate = g2.
     expect(pogacar.article.url).toBe('https://example.com/g1');
+    expect(pogacar.article.readingMinutes).toBeGreaterThanOrEqual(1);
+    expect(pogacar.alternates[0].readingMinutes).toBeNull();
     expect(pogacar.alternates[0].url).toBe('https://example.com/g2');
   });
 

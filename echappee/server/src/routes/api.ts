@@ -47,6 +47,9 @@ function articleCard(row: ArticleRow) {
     category: row.category,
     summary: row.summary,
     hasFullText: (row.content_len ?? 0) > 200,
+    // ~6 chars/word, 220 wpm.
+    readingMinutes:
+      (row.content_len ?? 0) > 200 ? Math.max(1, Math.round((row.content_len ?? 0) / 6 / 220)) : null,
     read: row.read_at !== null,
   };
 }

@@ -40,6 +40,12 @@ export default function StoryCard({
             <span className="opacity-60">{a.sourceName}</span>
             <span className="opacity-50">·</span>
             <time className="opacity-60">{timeAgo(a.publishedAt)}</time>
+            {a.readingMinutes && (
+              <>
+                <span className="opacity-50">·</span>
+                <span className="opacity-60 whitespace-nowrap">{a.readingMinutes} min</span>
+              </>
+            )}
             <button
               aria-label={card.read ? 'Mark as unread' : 'Mark as read'}
               title={card.read ? 'Mark as unread' : 'Mark as read'}
