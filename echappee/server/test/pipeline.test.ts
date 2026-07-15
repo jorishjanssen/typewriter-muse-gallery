@@ -96,10 +96,10 @@ describe('sanitizeFragment', () => {
 describe('parseEnrichment', () => {
   it('parses clean and fenced JSON, clamping bad cluster indices', () => {
     const clean = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":0}', 2);
-    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [], brief: null });
+    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [], brief: null, race: null });
 
     const fenced = parseEnrichment('```json\n{"summary":"S.","category":"nonsense","cluster_match":9}\n```', 2);
-    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [], brief: null });
+    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [], brief: null, race: null });
 
     expect(parseEnrichment('no json here', 0)).toBeNull();
   });
@@ -120,6 +120,41 @@ describe('parseEnrichment', () => {
       0
     );
     expect(result?.riders).toEqual(['Tadej Pogačar', 'Remco Evenepoel', 'Wout van Aert']);
+  });
+});
+
+describe('parseWatchGuide', () => {
+  it('parses tiers and clamps excitement; rejects junk', async () => {
+    const { parseWatchGuide } = await import('../src/llm.js');
+    const g = parseWatchGuide(JSON.stringify({
+      excitement: 9,
+      summary: 'A day that came alive long before the finish.',
+      tiers: [
+        { minutes: 20, from_km: 8, why: 'frantic finale' },
+        { minutes: 60, from_km: 30, why: 'decisive climbing' },
+        { minutes: 'full', from_km: 70, why: 'early aggression' },
+        { minutes: 45, from_km: 9999, why: 'out of range' },
+      ],
+    }));
+    expect(g?.excitement).toBe(5);
+    expect(g?.tiers).toHaveLength(3);
+    expect(g?.tiers[2]).toEqual({ minutes: 'full', fromKm: 70, why: 'early aggression' });
+    expect(parseWatchGuide('{"summary":"x","tiers":[]}')).toBeNull();
+  });
+});
+
+describe('parse race in enrichment', () => {
+  it('validates race refs', () => {
+    const ok = parseEnrichment(
+      '{"summary":"S.","category":"racing","cluster_match":null,"race":{"name":"Tour de France","year":2026,"stage":10,"date":"2026-07-14","kind":"report"}}',
+      0
+    );
+    expect(ok?.race).toEqual({ name: 'Tour de France', year: 2026, stage: 10, date: '2026-07-14', kind: 'report' });
+    const bad = parseEnrichment(
+      '{"summary":"S.","category":"racing","cluster_match":null,"race":{"name":"","year":1000}}',
+      0
+    );
+    expect(bad?.race).toBeNull();
   });
 });
 

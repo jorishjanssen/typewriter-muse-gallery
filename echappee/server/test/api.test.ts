@@ -169,6 +169,35 @@ describe('LLM model setting', () => {
   });
 });
 
+describe('races', () => {
+  it('links articles to race days, lists them, and serves a spoiler-free detail', async () => {
+    const { linkRace } = await import('../src/pipeline/refresh.js');
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const target = feed.cards[0].article;
+    await linkRace(db, target.id, {
+      name: 'Tour de France', year: 2026, stage: 10, date: '2026-07-14', kind: 'report',
+    });
+
+    const races = (await app.inject({ method: 'GET', url: '/api/races' })).json() as any[];
+    const tdf = races.find((r) => r.raceName === 'Tour de France 2026');
+    expect(tdf).toBeDefined();
+    expect(tdf.stageLabel).toBe('Stage 10');
+    expect(tdf.articles).toBe(1);
+
+    const detail = (await app.inject({ method: 'GET', url: `/api/races/${tdf.id}` })).json() as any;
+    expect(detail.articleCount).toBe(1);
+    expect(detail.guide).toBeNull();
+    // Spoiler safety: no article titles or urls anywhere in the detail payload.
+    expect(JSON.stringify(detail)).not.toContain(target.title.slice(0, 20));
+
+    const filtered = (
+      await app.inject({ method: 'GET', url: `/api/feed?race=${tdf.id}` })
+    ).json() as { cards: any[] };
+    expect(filtered.cards).toHaveLength(1);
+    expect(filtered.cards[0].article.id).toBe(target.id);
+  });
+});
+
 describe('GET /api/articles/:id', () => {
   it('returns full content and cluster alternates', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
