@@ -296,6 +296,37 @@ describe('engagement tracking', () => {
   });
 });
 
+describe('GET /api/articles/:id/next-unread', () => {
+  it('continues down the feed, skips own cluster and mutes, wraps at the end', async () => {
+    await db.query('UPDATE articles SET read_at = NULL, seen_at = NULL, opened_at = NULL', []);
+    // Published order: g2 (08:30) > g1 (08:00, same cluster as g2) > g3 (07:00).
+    const byGuid = Object.fromEntries(
+      (await db.query<{ guid: string; id: number }>('SELECT guid, id FROM articles')).map((r) => [r.guid, r.id])
+    );
+
+    // From g1: g2 shares the cluster, so the next unread down the feed is g3.
+    const fromG1 = (await app.inject({ method: 'GET', url: `/api/articles/${byGuid.g1}/next-unread` })).json() as any;
+    expect(fromG1.id).toBe(byGuid.g3);
+
+    // From g3 (bottom of the feed): wraps to the newest unread outside its cluster.
+    const fromG3 = (await app.inject({ method: 'GET', url: `/api/articles/${byGuid.g3}/next-unread` })).json() as any;
+    expect([byGuid.g1, byGuid.g2]).toContain(fromG3.id);
+
+    // A muted source is never suggested.
+    await app.inject({ method: 'POST', url: '/api/mutes', payload: { kind: 'source', value: 'bikeradar' } });
+    const muted = (await app.inject({ method: 'GET', url: `/api/articles/${byGuid.g1}/next-unread` })).json() as any;
+    expect(muted.id).toBeNull(); // g3 is bikeradar, g2 shares g1's cluster
+    const mutes = (await app.inject({ method: 'GET', url: '/api/mutes' })).json() as any[];
+    await app.inject({ method: 'DELETE', url: `/api/mutes/${mutes[0].id}` });
+
+    // Nothing unread anywhere → null.
+    await db.query('UPDATE articles SET read_at = $1', [new Date().toISOString()]);
+    const none = (await app.inject({ method: 'GET', url: `/api/articles/${byGuid.g1}/next-unread` })).json() as any;
+    expect(none.id).toBeNull();
+    await db.query('UPDATE articles SET read_at = NULL', []);
+  });
+});
+
 describe('likes', () => {
   it('toggles a thumbs-up and counts it per source', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };

@@ -339,6 +339,50 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     return { ok: true };
   });
 
+  // The next unread story for the reader's "next" button: continues DOWN
+  // the feed (older first, feed order), skips the current story's cluster
+  // and muted content, wraps to the newest unread when the bottom is hit.
+  app.get<{ Params: { id: string } }>('/api/articles/:id/next-unread', async (req, reply) => {
+    const id = Number(req.params.id);
+    const cur = (
+      await db.query<{ published_at: string; cluster_id: number }>(
+        'SELECT published_at, cluster_id FROM articles WHERE id = $1',
+        [id]
+      )
+    )[0];
+    if (!cur) return reply.code(404).send({ error: 'not found' });
+
+    const mutes = await getMutes(db);
+    const mutedSources = new Set(mutes.filter((m) => m.kind === 'source').map((m) => m.value));
+    const mutedCategories = new Set(mutes.filter((m) => m.kind === 'category').map((m) => m.value));
+    const mutedTerms = mutes.filter((m) => m.kind === 'term').map((m) => m.value.toLowerCase());
+    const visible = (r: { source_key: string; category: string; title: string; summary: string | null; excerpt: string | null }) =>
+      !mutedSources.has(r.source_key) &&
+      !mutedCategories.has(r.category) &&
+      !mutedTerms.some((t) =>
+        `${r.title} ${r.summary ?? ''} ${r.excerpt ?? ''}`.toLowerCase().includes(t)
+      );
+
+    const COLS = 'id, source_key, category, title, summary, excerpt';
+    const older = await db.query<{ id: number; source_key: string; category: string; title: string; summary: string | null; excerpt: string | null }>(
+      `SELECT ${COLS} FROM articles
+       WHERE read_at IS NULL AND cluster_id != $1 AND published_at < $2
+       ORDER BY published_at DESC LIMIT 50`,
+      [cur.cluster_id, cur.published_at]
+    );
+    let next = older.find(visible);
+    if (!next) {
+      const wrapped = await db.query<typeof older[number]>(
+        `SELECT ${COLS} FROM articles
+         WHERE read_at IS NULL AND cluster_id != $1 AND published_at >= $2 AND id != $3
+         ORDER BY published_at DESC LIMIT 50`,
+        [cur.cluster_id, cur.published_at, id]
+      );
+      next = wrapped.find(visible);
+    }
+    return { id: next?.id ?? null };
+  });
+
   // Thumbs up — "this was a good read".
   app.post<{ Params: { id: string } }>('/api/articles/:id/like', async (req) => {
     await db.query('UPDATE articles SET liked_at = COALESCE(liked_at, $1) WHERE id = $2', [

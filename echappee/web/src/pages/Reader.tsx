@@ -16,6 +16,18 @@ export default function Reader() {
     enabled: !!id,
   });
 
+  const next = useQuery({
+    queryKey: ['next-unread', id],
+    queryFn: () => api.nextUnread(id!),
+    enabled: !!id,
+  });
+
+  // Hopping to the next story via "Next unread" stays on this component —
+  // reset the scroll position for each new article.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+
   const markRead = useMutation({
     mutationFn: (articleId: number) => api.markRead(articleId),
     onSuccess: () => {
@@ -183,12 +195,22 @@ export default function Reader() {
               </div>
             )}
 
-            <button
-              onClick={goBack}
-              className="mt-8 w-full rounded-xl bg-ink text-paper dark:bg-snow dark:text-night py-3 text-sm font-semibold"
-            >
-              ← Back to feed
-            </button>
+            <div className="mt-8 flex gap-2">
+              <button
+                onClick={goBack}
+                className="flex-1 rounded-xl bg-ink text-paper dark:bg-snow dark:text-night py-3 text-sm font-semibold"
+              >
+                ← Back to feed
+              </button>
+              {next.data?.id != null && (
+                <Link
+                  to={`/article/${next.data.id}`}
+                  className="flex-1 rounded-xl bg-accent text-white py-3 text-sm font-semibold text-center"
+                >
+                  Next unread →
+                </Link>
+              )}
+            </div>
           </article>
         )}
       </div>

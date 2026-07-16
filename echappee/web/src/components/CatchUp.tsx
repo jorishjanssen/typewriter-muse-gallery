@@ -1,20 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, timeAgo } from '../lib/api';
 
-/** One-glance triage of the unread pile: the big stories + mark-all-read. */
+/** One-glance triage of the unread pile: the big stories. The corner ✕ dismisses it for the session. */
 export default function CatchUp() {
-  const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState(
     () => sessionStorage.getItem('echappee-catchup-dismissed') === '1'
   );
   const catchup = useQuery({ queryKey: ['catchup'], queryFn: api.catchup, staleTime: 60_000 });
-
-  const readAll = useMutation({
-    mutationFn: api.readAll,
-    onSuccess: () => void queryClient.invalidateQueries(),
-  });
 
   const data = catchup.data;
   if (dismissed || !data || data.unreadStories < 8) return null;
@@ -37,7 +31,7 @@ export default function CatchUp() {
         {data.big.length > 0 ? ` — ${data.big.length} big ${data.big.length === 1 ? 'one' : 'ones'}:` : '.'}
       </p>
       {data.big.length > 0 && (
-        <ul className="space-y-2.5 mb-4">
+        <ul className="space-y-2.5">
           {data.big.map((b) => (
             <li key={b.clusterId}>
               <Link to={`/article/${b.article.id}`} className="block group">
@@ -53,20 +47,6 @@ export default function CatchUp() {
           ))}
         </ul>
       )}
-      <div className="flex gap-2">
-        <button
-          onClick={() => {
-            readAll.mutate();
-            dismiss();
-          }}
-          className="rounded-full bg-ink text-paper dark:bg-snow dark:text-night px-4 py-2 text-sm font-semibold"
-        >
-          Mark all as read
-        </button>
-        <button onClick={dismiss} className="rounded-full border border-ink/15 dark:border-snow/20 px-4 py-2 text-sm opacity-70">
-          Keep browsing
-        </button>
-      </div>
     </section>
   );
 }
