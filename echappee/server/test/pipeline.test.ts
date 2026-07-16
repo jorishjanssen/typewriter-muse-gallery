@@ -328,22 +328,23 @@ describe('cluster briefs', () => {
 });
 
 describe('parseWatchGuide', () => {
-  it('parses tiers and clamps excitement; rejects junk', async () => {
+  it('ranks options by rating, clamps values, drops junk', async () => {
     const { parseWatchGuide } = await import('../src/llm.js');
     const g = parseWatchGuide(JSON.stringify({
-      excitement: 9,
-      summary: 'A day that came alive long before the finish.',
-      tiers: [
-        { minutes: 20, from_km: 8, why: 'frantic finale' },
-        { minutes: 60, from_km: 30, why: 'decisive climbing' },
-        { minutes: 'full', from_km: 70, why: 'early aggression' },
-        { minutes: 45, from_km: 9999, why: 'out of range' },
+      options: [
+        { from_km: 12, minutes: 25, rating: 2 },
+        { from_km: 45, minutes: 90, rating: 9 }, // clamps to 5, ranks first
+        { from_km: 9999, minutes: 45, rating: 4 }, // out of range → dropped
+        { from_km: 130, minutes: 'full', rating: 4 },
       ],
     }));
-    expect(g?.excitement).toBe(5);
-    expect(g?.tiers).toHaveLength(3);
-    expect(g?.tiers[2]).toEqual({ minutes: 'full', fromKm: 70, why: 'early aggression' });
-    expect(parseWatchGuide('{"summary":"x","tiers":[]}')).toBeNull();
+    expect(g?.options).toEqual([
+      { fromKm: 45, minutes: 90, rating: 5 },
+      { fromKm: 130, minutes: 'full', rating: 4 },
+      { fromKm: 12, minutes: 25, rating: 2 },
+    ]);
+    expect(parseWatchGuide('{"options":[]}')).toBeNull();
+    expect(parseWatchGuide('no json')).toBeNull();
   });
 });
 

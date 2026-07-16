@@ -65,10 +65,11 @@ export interface RaceRow {
   hasGuide: boolean;
 }
 
-export interface WatchGuideTier {
-  minutes: number | 'full';
+export interface WatchGuideOption {
   fromKm: number;
-  why: string;
+  minutes: number | 'full';
+  /** 1-5, how good this entry point is. Options arrive ranked best first. */
+  rating: number;
 }
 
 export interface RaceDetail {
@@ -81,7 +82,7 @@ export interface RaceDetail {
   previewCount: number;
   /** Reports and reactions — behind the reveal. */
   spoilerCount: number;
-  guide: { excitement: number; summary: string; tiers: WatchGuideTier[] } | null;
+  guide: { options: WatchGuideOption[] } | null;
   guideGeneratedAt: string | null;
 }
 

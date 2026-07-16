@@ -79,37 +79,34 @@ export default function RaceStage() {
               </section>
             )}
 
-            {r.guide ? (
+            {r.guide && r.guide.options.length > 0 ? (
               <div className="rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10 p-4 mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-semibold text-accent">▶ When to start watching</span>
-                  <span className="ml-auto flex gap-0.5" aria-label={`excitement ${r.guide.excitement} of 5`}>
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <span
-                        key={i}
-                        className={`h-2 w-2 rounded-full ${
-                          i <= r.guide!.excitement ? 'bg-accent' : 'bg-ink/15 dark:bg-snow/15'
-                        }`}
-                      />
-                    ))}
-                  </span>
-                </div>
-                <p className="text-sm leading-relaxed mb-3">{r.guide.summary}</p>
-                <ul className="space-y-2.5">
-                  {r.guide.tiers.map((t, i) => (
-                    <li key={i} className="flex gap-3 items-baseline">
-                      <span className="shrink-0 w-20 text-sm font-bold">
-                        {t.minutes === 'full' ? 'Full race' : `~${t.minutes} min`}
+                <span className="text-sm font-semibold text-accent">▶ When to start watching</span>
+                <ul className="mt-3 space-y-2.5">
+                  {r.guide.options.map((o, i) => (
+                    <li key={i} className="flex items-center gap-3">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent text-xs font-bold">
+                        {i + 1}
                       </span>
-                      <span className="text-sm">
-                        <span className="font-semibold">from ~{t.fromKm} km to go</span>
-                        <span className="opacity-70"> — {t.why}</span>
+                      <span className="text-sm font-semibold">~{o.fromKm} km to go</span>
+                      <span className="text-sm opacity-60">
+                        {o.minutes === 'full' ? 'full race' : `≈${o.minutes} min`}
+                      </span>
+                      <span className="ml-auto flex gap-0.5" aria-label={`rated ${o.rating} of 5`}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <span
+                            key={n}
+                            className={`h-2 w-2 rounded-full ${
+                              n <= o.rating ? 'bg-accent' : 'bg-ink/15 dark:bg-snow/15'
+                            }`}
+                          />
+                        ))}
                       </span>
                     </li>
                   ))}
                 </ul>
                 <p className="mt-3 text-xs opacity-50">
-                  Estimated from race reports — treat km marks as approximate. Spoiler-free.
+                  Ranked entry points, best first — km marks are approximate. Spoiler-free.
                 </p>
               </div>
             ) : (

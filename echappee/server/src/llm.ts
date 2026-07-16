@@ -28,9 +28,9 @@ export interface RaceRef {
 }
 
 export interface WatchGuide {
-  excitement: number;
-  summary: string;
-  tiers: { minutes: number | 'full'; fromKm: number; why: string }[];
+  /** Entry points to start watching, ranked best first. Nothing else — any
+   *  prose about the race day is a spoiler channel. */
+  options: { fromKm: number; minutes: number | 'full'; rating: number }[];
 }
 
 /** Diacritic-insensitive grouping key: "Tadej Pogačar" and "Pogacar" unify. */
@@ -378,18 +378,12 @@ export function parseMergeVerdict(raw: string): boolean | null {
   }
 }
 
-const GUIDE_PROMPT = `You write SPOILER-FREE viewing guides for people who watch bike races on replay.
-You get journalists' race reports of one finished race day. Respond with ONLY JSON:
-{
-  "excitement": <1-5, how exciting this race day was to watch>,
-  "summary": "1-2 sentences describing the character of the race day WITHOUT naming any rider, team, nationality or outcome",
-  "tiers": [
-    {"minutes": 20, "from_km": <km-to-go to start watching if you have ~20 minutes>, "why": "spoiler-free reason"},
-    {"minutes": 60, "from_km": <km-to-go for ~1 hour>, "why": "spoiler-free reason"},
-    {"minutes": "full", "from_km": <km-to-go from which the racing is genuinely worth watching>, "why": "spoiler-free reason"}
-  ]
-}
-HARD RULES: never mention rider names, team names, nationalities, jersey wearers, winners, or results anywhere. "why" describes race dynamics only ("the finale was chaotic", "decisive action started early on the final climb"). Round from_km to sensible values. As a broadcast rule of thumb ~25-30 km of racing is about an hour of viewing.`;
+const GUIDE_PROMPT = `You pick SPOILER-FREE moments to start watching a replay of a bike race.
+You get journalists' reports of one finished race day. Respond with ONLY this JSON:
+{"options": [{"from_km": <km-to-go where viewing should start>, "minutes": <approximate viewing time in minutes, or "full">, "rating": <1-5>}]}
+Give 1 to 3 options, ordered best first.
+rating: 5 = the ideal entry point — start here and you miss nothing that matters; 3 = decent compromise; 1 = only when very pressed for time.
+HARD RULES: output nothing but the JSON. No summary, no reasons, no rider/team/nationality names, not a single word describing how the race unfolded — the km numbers and ratings are the entire guide. Round from_km to sensible values. Rule of thumb: ~25-30 km of racing is about an hour of viewing.`;
 
 /** Generate a spoiler-free watch guide from the race reports of one race day. */
 export async function generateWatchGuide(
@@ -424,35 +418,35 @@ export async function generateWatchGuide(
   }
 }
 
-/** Exported for tests. */
+/** Exported for tests. Ranks by rating, keeps at most 3 options, drops junk. */
 export function parseWatchGuide(raw: string): WatchGuide | null {
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) return null;
   try {
     const obj = JSON.parse(match[0]) as Record<string, unknown>;
-    const excitement =
-      typeof obj.excitement === 'number' ? Math.min(5, Math.max(1, Math.round(obj.excitement))) : 3;
-    const summary = typeof obj.summary === 'string' ? obj.summary.trim() : '';
-    const tiers = Array.isArray(obj.tiers)
-      ? obj.tiers
+    const options = Array.isArray(obj.options)
+      ? obj.options
           .map((t) => {
-            const tier = t as Record<string, unknown>;
+            const o = t as Record<string, unknown>;
             const minutes =
-              tier.minutes === 'full'
+              o.minutes === 'full'
                 ? ('full' as const)
-                : typeof tier.minutes === 'number'
-                  ? tier.minutes
+                : typeof o.minutes === 'number' && o.minutes >= 5 && o.minutes <= 600
+                  ? Math.round(o.minutes)
                   : null;
-            const fromKm = typeof tier.from_km === 'number' ? Math.round(tier.from_km) : null;
-            const why = typeof tier.why === 'string' ? tier.why.trim() : '';
-            return minutes !== null && fromKm !== null && fromKm >= 0 && fromKm <= 300
-              ? { minutes, fromKm, why }
-              : null;
+            const fromKm =
+              typeof o.from_km === 'number' && o.from_km >= 0 && o.from_km <= 300
+                ? Math.round(o.from_km)
+                : null;
+            const rating =
+              typeof o.rating === 'number' ? Math.min(5, Math.max(1, Math.round(o.rating))) : 3;
+            return minutes !== null && fromKm !== null ? { fromKm, minutes, rating } : null;
           })
-          .filter((t): t is WatchGuide['tiers'][number] => t !== null)
+          .filter((o): o is WatchGuide['options'][number] => o !== null)
       : [];
-    if (!summary || tiers.length === 0) return null;
-    return { excitement, summary, tiers };
+    if (options.length === 0) return null;
+    options.sort((a, b) => b.rating - a.rating);
+    return { options: options.slice(0, 3) };
   } catch {
     return null;
   }
