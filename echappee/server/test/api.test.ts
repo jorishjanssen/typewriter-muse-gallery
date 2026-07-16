@@ -60,6 +60,9 @@ describe('GET /api/feed', () => {
     expect(pogacar.article.readingMinutes).toBeGreaterThanOrEqual(1);
     expect(pogacar.alternates[0].readingMinutes).toBeNull();
     expect(pogacar.alternates[0].url).toBe('https://example.com/g2');
+    // Day dividers follow the newest coverage (g2), not the displayed
+    // article (g1) — otherwise Today/Yesterday labels flip around the card.
+    expect(pogacar.latestPublishedAt).toBe('2026-07-14T08:30:00.000Z');
   });
 
   it('filters by category', async () => {
