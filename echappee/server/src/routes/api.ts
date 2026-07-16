@@ -168,6 +168,11 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         // Only meaningful for multi-source cards; a lone visible article
         // (e.g. after muting a source) falls back to its own brief.
         clusterBrief: group.length > 1 ? (clusterBriefs.get(best.cluster_id) ?? null) : null,
+        // The story's position in the feed follows its newest coverage
+        // (group[0]: rows arrive published-DESC); day dividers must use the
+        // same timestamp or a story with an older "best" article flips the
+        // Today/Yesterday labels around itself.
+        latestPublishedAt: group[0].published_at,
         read: group.every((r) => r.read_at !== null),
       });
       lastPublished = group[group.length - 1].published_at;

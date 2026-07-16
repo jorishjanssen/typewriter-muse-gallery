@@ -30,6 +30,8 @@ export interface FeedCard {
   alternates: ArticleCard[];
   /** Merged multi-source brief for the whole story, when generated. */
   clusterBrief: string | null;
+  /** Newest coverage in the cluster — drives feed position and day dividers. */
+  latestPublishedAt: string;
   read: boolean;
 }
 

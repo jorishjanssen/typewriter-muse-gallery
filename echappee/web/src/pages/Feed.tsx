@@ -181,7 +181,9 @@ export default function Feed() {
   let sinceQuote = 2;
   const usedPhotos = new Set<number>();
   cards.forEach((card, i) => {
-    const day = dayLabel(card.article.publishedAt);
+    // Divider by the same timestamp that positions the card (its newest
+    // coverage), not the displayed article — those can differ by a day.
+    const day = dayLabel(card.latestPublishedAt ?? card.article.publishedAt);
     if (day !== lastDay) {
       stream.push(
         <div
