@@ -20,6 +20,8 @@ export interface ArticleCard {
   /** Striking verbatim quote pulled from the article, when one exists. */
   quote: { text: string; who: string } | null;
   read: boolean;
+  /** Thumbs-up: "this was a good read". */
+  liked: boolean;
 }
 
 export interface FeedCard {
@@ -116,6 +118,8 @@ export interface SourceHealth {
   opened: number;
   /** Articles dismissed (scrolled past / swiped) without opening. */
   skipped: number;
+  /** Articles given a thumbs-up. */
+  liked: number;
   /** opened / (opened + skipped), or null before any triage. */
   readPct: number | null;
 }
@@ -183,6 +187,8 @@ export const api = {
   article: (id: number | string) => request<FullArticle>(`/api/articles/${id}`),
   markRead: (id: number) => request(`/api/articles/${id}/read`, { method: 'POST' }),
   markUnread: (id: number) => request(`/api/articles/${id}/unread`, { method: 'POST' }),
+  like: (id: number) => request(`/api/articles/${id}/like`, { method: 'POST' }),
+  unlike: (id: number) => request(`/api/articles/${id}/unlike`, { method: 'POST' }),
   markClusterRead: (id: number) => request(`/api/clusters/${id}/read`, { method: 'POST' }),
   markClusterUnread: (id: number) => request(`/api/clusters/${id}/unread`, { method: 'POST' }),
   readAll: () => request('/api/read-all', { method: 'POST' }),

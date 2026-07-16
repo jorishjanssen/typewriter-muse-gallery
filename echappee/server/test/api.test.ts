@@ -296,6 +296,25 @@ describe('engagement tracking', () => {
   });
 });
 
+describe('likes', () => {
+  it('toggles a thumbs-up and counts it per source', async () => {
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const target = feed.cards[0].article;
+    expect(target.liked).toBe(false);
+
+    await app.inject({ method: 'POST', url: `/api/articles/${target.id}/like` });
+    const after = (await app.inject({ method: 'GET', url: `/api/articles/${target.id}` })).json() as any;
+    expect(after.liked).toBe(true);
+
+    const sources = (await app.inject({ method: 'GET', url: '/api/sources' })).json() as any[];
+    expect(sources.find((s) => s.key === target.sourceKey).liked).toBe(1);
+
+    await app.inject({ method: 'POST', url: `/api/articles/${target.id}/unlike` });
+    const undone = (await app.inject({ method: 'GET', url: `/api/articles/${target.id}` })).json() as any;
+    expect(undone.liked).toBe(false);
+  });
+});
+
 describe('cluster brief in feed', () => {
   it('exposes the merged brief on multi-source cards only', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };

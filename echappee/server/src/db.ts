@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS articles (
   seen_at TEXT,
   quote_text TEXT,
   quote_who TEXT,
+  liked_at TEXT,
   UNIQUE(source_key, guid)
 );
 
@@ -77,6 +78,8 @@ ALTER TABLE articles ADD COLUMN IF NOT EXISTS seen_at TEXT;
 -- Striking verbatim rider quote extracted by enrichment, for feed pull-quotes.
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS quote_text TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS quote_who TEXT;
+-- Thumbs-up from the reader ("good read"), per article.
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS liked_at TEXT;
 
 CREATE TABLE IF NOT EXISTS races (
   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
