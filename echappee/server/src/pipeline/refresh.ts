@@ -321,20 +321,60 @@ export async function ingestArticle(
 }
 
 /**
+ * Whether a race day can plausibly have a final result yet. Road races
+ * finish around 17:00–17:45 local time; before that, articles the
+ * classifier labeled "report" are live coverage of a race still going.
+ * Undated races can't be gated and pass through.
+ */
+export function raceDayFinished(raceDate: string | null, now = new Date()): boolean {
+  if (!raceDate) return true;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Amsterdam',
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '00';
+  const today = `${get('year')}-${get('month')}-${get('day')}`;
+  if (raceDate < today) return true;
+  if (raceDate > today) return false;
+  return Number(get('hour')) * 60 + Number(get('minute')) >= 17 * 60 + 45;
+}
+
+/**
  * Create or refresh spoiler-free watch guides for race days whose report
- * count grew since the guide was generated (bounded per run).
+ * count grew since the guide was generated (bounded per run). Guides are
+ * only generated once the race day can actually be over, and premature
+ * ones (from live coverage mislabeled as reports) are removed.
  */
 async function generateWatchGuides(db: Db, limit = 3): Promise<void> {
-  const pending = await db.query<{ id: number; race_name: string; stage_label: string; reports: number }>(
-    `SELECT r.id, r.race_name, r.stage_label, COUNT(a.id)::int AS reports
+  // Self-heal: drop guides for race days that cannot be finished yet, so
+  // the race-day banner never announces a guide mid-race.
+  const dated = await db.query<{ race_id: number; race_date: string | null }>(
+    `SELECT w.race_id, r.race_date FROM watch_guides w
+     JOIN races r ON r.id = w.race_id WHERE r.race_date IS NOT NULL`
+  );
+  for (const g of dated) {
+    if (!raceDayFinished(g.race_date)) {
+      await db.query('DELETE FROM watch_guides WHERE race_id = $1', [g.race_id]);
+      console.log(`[guides] removed premature guide for race ${g.race_id} (${g.race_date} not finished yet)`);
+    }
+  }
+
+  const pending = await db.query<{ id: number; race_name: string; stage_label: string; race_date: string | null; reports: number }>(
+    `SELECT r.id, r.race_name, r.stage_label, r.race_date, COUNT(a.id)::int AS reports
      FROM races r JOIN articles a ON a.race_id = r.id AND a.race_kind = 'report'
-     GROUP BY r.id, r.race_name, r.stage_label
+     GROUP BY r.id, r.race_name, r.stage_label, r.race_date
      HAVING COUNT(a.id) > COALESCE((SELECT article_count FROM watch_guides w WHERE w.race_id = r.id), 0)
      ORDER BY MAX(a.published_at) DESC
      LIMIT $1`,
     [limit]
   );
   for (const race of pending) {
+    if (!raceDayFinished(race.race_date)) continue;
     const reports = await db.query<{ content_text: string | null }>(
       `SELECT content_text FROM articles
        WHERE race_id = $1 AND race_kind = 'report' AND content_text IS NOT NULL
