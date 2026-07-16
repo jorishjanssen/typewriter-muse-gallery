@@ -25,6 +25,14 @@ export default function TabBar() {
             <Link
               key={t.to}
               to={t.to}
+              onClick={(e) => {
+                // Tapping the tab you're already on scrolls to the top
+                // instead of re-navigating.
+                if (pathname === t.to) {
+                  e.preventDefault();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+              }}
               className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors ${
                 active ? 'text-accent' : 'opacity-55 hover:opacity-90'
               }`}
