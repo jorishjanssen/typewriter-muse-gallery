@@ -379,6 +379,19 @@ describe('resolveTaskModel', () => {
   });
 });
 
+describe('raceDayFinished', () => {
+  it('gates race days by Amsterdam time', async () => {
+    const { raceDayFinished } = await import('../src/pipeline/refresh.js');
+    const midRace = new Date('2026-07-16T12:00:00Z'); // 14:00 in Amsterdam
+    const evening = new Date('2026-07-16T16:30:00Z'); // 18:30 in Amsterdam
+    expect(raceDayFinished('2026-07-15', midRace)).toBe(true); // yesterday
+    expect(raceDayFinished('2026-07-16', midRace)).toBe(false); // today, mid-race
+    expect(raceDayFinished('2026-07-16', evening)).toBe(true); // today, after finish window
+    expect(raceDayFinished('2026-07-17', evening)).toBe(false); // tomorrow
+    expect(raceDayFinished(null, midRace)).toBe(true); // undated: can't gate
+  });
+});
+
 describe('riderKey', () => {
   it('unifies diacritics, case and spacing', async () => {
     const { riderKey } = await import('../src/llm.js');
