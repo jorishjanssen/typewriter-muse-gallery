@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS articles (
   read_at TEXT,
   opened_at TEXT,
   seen_at TEXT,
+  quote_text TEXT,
+  quote_who TEXT,
   UNIQUE(source_key, guid)
 );
 
@@ -72,6 +74,9 @@ ALTER TABLE articles ADD COLUMN IF NOT EXISTS importance INTEGER;
 -- read_at stays the unread-list driver, set by either path (or read-all).
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS opened_at TEXT;
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS seen_at TEXT;
+-- Striking verbatim rider quote extracted by enrichment, for feed pull-quotes.
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS quote_text TEXT;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS quote_who TEXT;
 
 CREATE TABLE IF NOT EXISTS races (
   id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

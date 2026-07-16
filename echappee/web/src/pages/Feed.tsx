@@ -1,5 +1,6 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import ActionSheet from '../components/ActionSheet';
 import BriefCard from '../components/BriefCard';
 import CatchUp from '../components/CatchUp';
@@ -7,14 +8,12 @@ import InfiniteScroll from '../components/InfiniteScroll';
 import PullToRefresh from '../components/PullToRefresh';
 import RaceBanner from '../components/RaceBanner';
 import { SkeletonFeed } from '../components/Skeleton';
-import StoryCard from '../components/StoryCard';
 import { api, CATEGORY_LABELS, type Category, type FeedCard } from '../lib/api';
 import { useToggleRead } from '../lib/useToggleRead';
 
 const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 'offroad', 'other'];
-const SHOW_READ_KEY = 'echappee-show-read';
-const VIEW_KEY = 'echappee-view';
-// Scroll-past-marks-seen, both views. On unless explicitly disabled.
+const SHOW_ALL_KEY = 'echappee-show-read';
+// Scroll-past-marks-seen. On unless explicitly disabled.
 const AUTOSEEN_KEY = 'echappee-autoseen';
 
 function dayLabel(iso: string): string {
@@ -61,36 +60,59 @@ function AutoSeen({
   return <div ref={ref}>{children}</div>;
 }
 
+/** A photo from one of the surrounding stories, to break up the text wall. */
+function PhotoBreak({ card }: { card: FeedCard }) {
+  const a = card.article;
+  return (
+    <Link to={`/article/${a.id}`} className="block my-4 group">
+      <img
+        src={a.imageUrl!}
+        alt=""
+        loading="lazy"
+        className="w-full aspect-[16/9] rounded-2xl object-cover"
+      />
+      <span className="mt-1.5 block text-xs opacity-60 line-clamp-1 group-hover:opacity-90">
+        {a.title} · {a.sourceName}
+      </span>
+    </Link>
+  );
+}
+
 export default function Feed() {
   const [category, setCategory] = useState<Category | 'all'>('all');
   // Unread is the default view; the preference is remembered per device.
-  const [showRead, setShowRead] = useState(() => localStorage.getItem(SHOW_READ_KEY) === '1');
-  const [view, setView] = useState<'cards' | 'briefs'>(() =>
-    localStorage.getItem(VIEW_KEY) === 'briefs' ? 'briefs' : 'cards'
-  );
+  const [showAll, setShowAll] = useState(() => localStorage.getItem(SHOW_ALL_KEY) === '1');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [raceOnly, setRaceOnly] = useState(false);
   const autoSeen = localStorage.getItem(AUTOSEEN_KEY) !== '0';
   const [undo, setUndo] = useState<{ clusterId: number; title: string } | null>(null);
   const [sheetCard, setSheetCard] = useState<FeedCard | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stories auto-marked seen this session stay visible (dimmed) instead of
-  // vanishing mid-scroll like a manual swipe does.
+  // Stories auto-marked seen this session stay visible instead of vanishing
+  // mid-scroll like a manual swipe does.
   const autoRead = useRef(new Set<number>());
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    localStorage.setItem(SHOW_READ_KEY, showRead ? '1' : '0');
-  }, [showRead]);
+    localStorage.setItem(SHOW_ALL_KEY, showAll ? '1' : '0');
+  }, [showAll]);
 
-  useEffect(() => {
-    localStorage.setItem(VIEW_KEY, view);
-  }, [view]);
+  // Today's race (if any) powers the leftmost filter chip; the RaceBanner
+  // component shares this cached query.
+  const raceToday = useQuery({
+    queryKey: ['race-banner'],
+    queryFn: api.raceBanner,
+    staleTime: 5 * 60_000,
+  });
+  const todayRaceId = raceToday.data?.raceId ?? null;
 
   const feed = useInfiniteQuery({
-    queryKey: ['feed', category, !showRead],
+    queryKey: ['feed', category, !showAll, raceOnly ? todayRaceId : null],
     queryFn: ({ pageParam }) =>
       api.feed({
         category: category === 'all' ? undefined : category,
-        unread: !showRead,
+        race: raceOnly && todayRaceId ? todayRaceId : undefined,
+        unread: !showAll,
         before: pageParam,
       }),
     initialPageParam: undefined as string | undefined,
@@ -115,7 +137,7 @@ export default function Feed() {
     const read = !card.read;
     toggleRead.mutate({ clusterId: card.clusterId, read });
     if (undoTimer.current) clearTimeout(undoTimer.current);
-    if (read && !showRead) {
+    if (read && !showAll) {
       // The card vanishes from the unread view — offer a way back.
       setUndo({ clusterId: card.clusterId, title: card.article.title });
       undoTimer.current = setTimeout(() => setUndo(null), 5000);
@@ -131,7 +153,7 @@ export default function Feed() {
   };
 
   const cards = (feed.data?.pages.flatMap((p) => p.cards) ?? []).filter(
-    (c) => showRead || !c.read || autoRead.current.has(c.clusterId)
+    (c) => showAll || !c.read || autoRead.current.has(c.clusterId)
   );
 
   const handleRefresh = async () => {
@@ -151,7 +173,51 @@ export default function Feed() {
       )
     : [];
 
+  // Assemble the brief stream: day dividers, a pull-quote at most every
+  // other brief, and a photo break every 4 briefs (image borrowed from a
+  // nearby story, each used once).
+  const stream: React.ReactNode[] = [];
   let lastDay = '';
+  let sinceQuote = 2;
+  const usedPhotos = new Set<number>();
+  cards.forEach((card, i) => {
+    const day = dayLabel(card.article.publishedAt);
+    if (day !== lastDay) {
+      stream.push(
+        <div
+          key={`day-${day}`}
+          className="pt-4 pb-1 text-xs font-semibold uppercase tracking-wider opacity-50"
+        >
+          {day}
+        </div>
+      );
+      lastDay = day;
+    }
+    const hasQuote = [card.article, ...card.alternates].some((a) => a.quote);
+    const showQuote = hasQuote && sinceQuote >= 2;
+    sinceQuote = showQuote ? 0 : sinceQuote + 1;
+    stream.push(
+      <div key={card.clusterId + '-' + card.article.id}>
+        <AutoSeen enabled={autoSeen && !showAll} onSeen={() => handleAutoSeen(card)}>
+          <BriefCard
+            card={card}
+            onToggleRead={handleToggleRead}
+            onLongPress={setSheetCard}
+            showQuote={showQuote}
+          />
+        </AutoSeen>
+      </div>
+    );
+    if ((i + 1) % 4 === 0) {
+      const photoCard = cards
+        .slice(Math.max(0, i - 3), i + 1)
+        .find((c) => c.article.imageUrl && !usedPhotos.has(c.article.id));
+      if (photoCard) {
+        usedPhotos.add(photoCard.article.id);
+        stream.push(<PhotoBreak key={`photo-${photoCard.article.id}`} card={photoCard} />);
+      }
+    }
+  });
 
   return (
     <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
@@ -161,42 +227,62 @@ export default function Feed() {
         <CatchUp />
         <div className="flex gap-2 overflow-x-auto py-3 -mx-4 px-4 scrollbar-none">
           <div className="flex shrink-0 rounded-full border border-ink/15 dark:border-snow/20 p-0.5">
-            {(['cards', 'briefs'] as const).map((v) => (
+            {([false, true] as const).map((all) => (
               <button
-                key={v}
-                onClick={() => setView(v)}
+                key={String(all)}
+                onClick={() => setShowAll(all)}
                 className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                  view === v ? 'bg-ink text-paper dark:bg-snow dark:text-night' : 'opacity-60'
+                  showAll === all ? 'bg-ink text-paper dark:bg-snow dark:text-night' : 'opacity-60'
                 }`}
               >
-                {v === 'cards' ? 'Articles' : 'Briefs'}
+                {all ? 'All' : 'Unread'}
               </button>
             ))}
           </div>
-          {CHIP_ORDER.map((c) => (
+          {todayRaceId !== null && (
             <button
-              key={c}
-              onClick={() => setCategory(c)}
+              onClick={() => setRaceOnly((v) => !v)}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
-                category === c
-                  ? 'bg-ink text-paper dark:bg-snow dark:text-night border-transparent'
-                  : 'border-ink/15 dark:border-snow/20 opacity-70 hover:opacity-100'
+                raceOnly
+                  ? 'bg-accent text-white border-transparent'
+                  : 'border-accent/40 text-accent hover:bg-accent/10'
               }`}
             >
-              {c === 'all' ? 'All' : CATEGORY_LABELS[c]}
+              🏁 Today's race
             </button>
-          ))}
+          )}
           <button
-            onClick={() => setShowRead((v) => !v)}
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-expanded={filtersOpen}
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
-              showRead
-                ? 'bg-accent text-white border-transparent'
+              category !== 'all'
+                ? 'bg-ink text-paper dark:bg-snow dark:text-night border-transparent'
                 : 'border-ink/15 dark:border-snow/20 opacity-70 hover:opacity-100'
             }`}
           >
-            {showRead ? 'Showing read' : 'Show read'}
+            {category === 'all' ? 'Filter' : CATEGORY_LABELS[category]} {filtersOpen ? '▴' : '▾'}
           </button>
         </div>
+        {filtersOpen && (
+          <div className="flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-none">
+            {CHIP_ORDER.map((c) => (
+              <button
+                key={c}
+                onClick={() => {
+                  setCategory(c);
+                  setFiltersOpen(false);
+                }}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
+                  category === c
+                    ? 'bg-ink text-paper dark:bg-snow dark:text-night border-transparent'
+                    : 'border-ink/15 dark:border-snow/20 opacity-70 hover:opacity-100'
+                }`}
+              >
+                {c === 'all' ? 'All topics' : CATEGORY_LABELS[c]}
+              </button>
+            ))}
+          </div>
+        )}
 
         {feed.isLoading && <SkeletonFeed />}
         {feed.isError && (
@@ -207,39 +293,17 @@ export default function Feed() {
         {feed.isSuccess && cards.length === 0 && (
           <div className="py-16 text-center opacity-60 space-y-2">
             <p className="font-serif text-lg">
-              {showRead ? 'Nothing here yet.' : 'All caught up! 🚴'}
+              {showAll ? 'Nothing here yet.' : 'All caught up! 🚴'}
             </p>
             <p className="text-sm">
-              {showRead
+              {showAll
                 ? 'New articles arrive with the next scrape.'
-                : 'New articles arrive with the next scrape — or tap "Show read" to revisit.'}
+                : 'New articles arrive with the next scrape — or flip to "All" to revisit.'}
             </p>
           </div>
         )}
 
-        {cards.map((card) => {
-          const day = dayLabel(card.article.publishedAt);
-          const divider =
-            day !== lastDay ? (
-              <div className="pt-4 pb-1 text-xs font-semibold uppercase tracking-wider opacity-50">
-                {day}
-              </div>
-            ) : null;
-          lastDay = day;
-          const key = card.clusterId + '-' + card.article.id;
-          return (
-            <div key={key}>
-              {divider}
-              <AutoSeen enabled={autoSeen && !showRead} onSeen={() => handleAutoSeen(card)}>
-                {view === 'briefs' ? (
-                  <BriefCard card={card} onToggleRead={handleToggleRead} onLongPress={setSheetCard} />
-                ) : (
-                  <StoryCard card={card} onToggleRead={handleToggleRead} onLongPress={setSheetCard} />
-                )}
-              </AutoSeen>
-            </div>
-          );
-        })}
+        {stream}
 
         <InfiniteScroll
           hasMore={!!feed.hasNextPage}

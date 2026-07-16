@@ -17,6 +17,8 @@ export interface ArticleCard {
   hasFullText: boolean;
   readingMinutes: number | null;
   importance: number;
+  /** Striking verbatim quote pulled from the article, when one exists. */
+  quote: { text: string; who: string } | null;
   read: boolean;
 }
 
