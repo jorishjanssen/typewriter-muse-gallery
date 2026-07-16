@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ActionSheet from '../components/ActionSheet';
 import BriefCard from '../components/BriefCard';
-import CatchUp from '../components/CatchUp';
 import InfiniteScroll from '../components/InfiniteScroll';
 import PullToRefresh from '../components/PullToRefresh';
 import RaceBanner from '../components/RaceBanner';
@@ -226,7 +225,6 @@ export default function Feed() {
       <PullToRefresh onRefresh={handleRefresh}>
       <div className="mx-auto max-w-2xl px-4">
         <RaceBanner />
-        <CatchUp />
         <div className="flex gap-2 overflow-x-auto py-3 -mx-4 px-4 scrollbar-none">
           <div className="flex shrink-0 rounded-full border border-ink/15 dark:border-snow/20 p-0.5">
             {([false, true] as const).map((all) => (

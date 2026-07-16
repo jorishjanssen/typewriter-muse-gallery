@@ -28,6 +28,9 @@ export default function BriefCard({
     ? ([a, ...card.alternates].find((x) => x.quote)?.quote ?? null)
     : null;
   const sources: ArticleCard[] = [a, ...card.alternates];
+  // Story importance = the highest rating across its coverage. Only 4 and 5
+  // get a marker (one or two bolts); routine stories stay clean.
+  const importance = Math.max(...sources.map((s) => s.importance));
 
   return (
     <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>
@@ -36,6 +39,19 @@ export default function BriefCard({
         className="py-3.5 border-b border-ink/10 dark:border-snow/10"
       >
         <div className="flex items-center gap-2 text-xs mb-1">
+          {importance >= 4 && (
+            <span
+              className="flex text-accent -mr-0.5"
+              aria-label={`importance ${importance} of 5`}
+              title={`Importance ${importance}/5`}
+            >
+              {Array.from({ length: importance - 3 }, (_, i) => (
+                <svg key={i} width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="-ml-0.5 first:ml-0">
+                  <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
+                </svg>
+              ))}
+            </span>
+          )}
           <span className="font-semibold opacity-70">{a.sourceName}</span>
           <span className="opacity-50">·</span>
           <time className="opacity-60">{timeAgo(a.publishedAt)}</time>

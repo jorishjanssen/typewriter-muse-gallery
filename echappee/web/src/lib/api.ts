@@ -86,12 +86,6 @@ export interface RaceDetail {
   guideGeneratedAt: string | null;
 }
 
-export interface CatchUp {
-  unreadStories: number;
-  big: { clusterId: number; score: number; sources: number; article: ArticleCard }[];
-  oldestUnread: string | null;
-}
-
 export interface RaceBanner {
   raceId: number | null;
   raceName?: string;
@@ -176,7 +170,6 @@ export const api = {
   },
   riders: () => request<Rider[]>('/api/riders'),
   races: () => request<RaceRow[]>('/api/races'),
-  catchup: () => request<CatchUp>('/api/catchup'),
   race: (id: number | string) => request<RaceDetail>(`/api/races/${id}`),
   raceBanner: () => request<RaceBanner>('/api/race-banner'),
   llmModel: () => request<LlmModelSetting>('/api/settings/llm'),

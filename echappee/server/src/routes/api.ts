@@ -223,52 +223,6 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     );
   });
 
-  // ---- Catch-up digest: triage the unread pile in one glance -----------------
-  app.get('/api/catchup', async () => {
-    const rows = await db.query<ArticleRow>(
-      `SELECT ${ARTICLE_COLS} FROM articles WHERE read_at IS NULL
-       ORDER BY published_at DESC LIMIT 300`
-    );
-    const unreadClusters = new Set(rows.map((r) => r.cluster_id));
-
-    // Big stories are gated on OPENED, not read: with scroll-past-marks-seen,
-    // big stories get marked read in passing and would never surface here.
-    // A story stops being highlighted only once one of its articles was
-    // actually opened in the reader (or it ages out of the window).
-    const cutoff = new Date(Date.now() - 36 * 3600_000).toISOString();
-    const bigRows = await db.query<ArticleRow>(
-      `SELECT ${ARTICLE_COLS} FROM articles
-       WHERE published_at > $1
-         AND cluster_id NOT IN (
-           SELECT DISTINCT cluster_id FROM articles
-           WHERE opened_at IS NOT NULL AND cluster_id IS NOT NULL
-         )
-       ORDER BY published_at DESC LIMIT 300`,
-      [cutoff]
-    );
-    const clusters = new Map<number, ArticleRow[]>();
-    for (const row of bigRows) {
-      const group = clusters.get(row.cluster_id);
-      if (group) group.push(row);
-      else clusters.set(row.cluster_id, [row]);
-    }
-    const scored = [...clusters.values()].map((group) => {
-      const best = [...group].sort(
-        (a, b) => (b.content_len ?? 0) - (a.content_len ?? 0)
-      )[0];
-      const maxImportance = Math.max(...group.map((a) => a.importance ?? 2));
-      // Multi-source coverage is itself an importance signal.
-      const score = Math.min(5, maxImportance + (group.length >= 3 ? 1 : 0));
-      return { clusterId: best.cluster_id, score, sources: group.length, article: articleCard(best) };
-    });
-    const big = scored
-      .filter((c) => c.score >= 4)
-      .sort((a, b) => b.score - a.score || b.article.publishedAt.localeCompare(a.article.publishedAt))
-      .slice(0, 5);
-    const oldest = rows.length ? rows[rows.length - 1].published_at : null;
-    return { unreadStories: unreadClusters.size, big, oldestUnread: oldest };
-  });
-
   // ---- Races (spoiler-safe: no article data in these responses) --------------
   app.get('/api/races', async () => {
     return db.query(
