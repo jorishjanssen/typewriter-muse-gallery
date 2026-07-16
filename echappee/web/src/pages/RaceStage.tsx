@@ -79,11 +79,13 @@ export default function RaceStage() {
               </section>
             )}
 
-            {r.guide && r.guide.options.length > 0 ? (
+            {/* Optional chaining on purpose: a persisted cache can hold a
+                guide in an older shape without an options array. */}
+            {r.guide?.options?.length ? (
               <div className="rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10 p-4 mb-6">
                 <span className="text-sm font-semibold text-accent">▶ When to start watching</span>
                 <ul className="mt-3 space-y-2.5">
-                  {r.guide.options.map((o, i) => (
+                  {r.guide!.options.map((o, i) => (
                     <li key={i} className="flex items-center gap-3">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent text-xs font-bold">
                         {i + 1}

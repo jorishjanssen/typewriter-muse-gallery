@@ -37,7 +37,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister, maxAge: DAY, buster: 'v1' }}
+      // Bump the buster whenever a cached API shape changes incompatibly —
+      // stale persisted data otherwise crashes new UI code (e.g. the watch
+      // guide redesign reading .options from an old-shape guide).
+      persistOptions={{ persister, maxAge: DAY, buster: 'v2' }}
     >
       <BrowserRouter>
         <Routes>
