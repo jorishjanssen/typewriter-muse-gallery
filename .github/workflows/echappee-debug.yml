@@ -139,6 +139,10 @@ jobs:
           console.log('content health:', await sql.unsafe(\"SELECT source_key, COUNT(*)::int AS total, SUM(CASE WHEN content_text IS NULL OR LENGTH(content_text) < 200 THEN 1 ELSE 0 END)::int AS thin FROM articles GROUP BY source_key ORDER BY source_key\"));
           console.log('thin articles:', await sql.unsafe(\"SELECT id, source_key, url, LEFT(title, 70) AS title, COALESCE(LENGTH(content_text),0)::int AS len FROM articles WHERE content_text IS NULL OR LENGTH(content_text) < 200 ORDER BY id DESC LIMIT 15\"));
           console.log('enrichment:', await sql.unsafe(\"SELECT COUNT(*)::int AS total, SUM(CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END)::int AS enriched, SUM(CASE WHEN riders_at IS NULL THEN 1 ELSE 0 END)::int AS rider_backlog FROM articles\"));
+          console.log('importance dist (all):', await sql.unsafe('SELECT importance, COUNT(*)::int AS n FROM articles GROUP BY importance ORDER BY importance NULLS FIRST'));
+          console.log('importance dist (unread):', await sql.unsafe('SELECT importance, COUNT(*)::int AS n FROM articles WHERE read_at IS NULL GROUP BY importance ORDER BY importance NULLS FIRST'));
+          console.log('recent high-importance:', await sql.unsafe(\"SELECT id, importance, (read_at IS NOT NULL) AS read, published_at, LEFT(title, 55) AS title FROM articles WHERE importance >= 4 ORDER BY published_at DESC LIMIT 12\"));
+          console.log('importance by day:', await sql.unsafe(\"SELECT LEFT(published_at, 10) AS day, MAX(importance)::int AS max_imp, COUNT(*)::int AS n FROM articles GROUP BY LEFT(published_at, 10) ORDER BY day DESC LIMIT 5\"));
           console.log('top riders:', await sql.unsafe(\"SELECT rider_key, COUNT(*)::int AS n FROM article_riders GROUP BY rider_key ORDER BY n DESC LIMIT 10\").catch(() => 'article_riders table not created yet'));
           await sql.end({ timeout: 5 });
           process.exit(0);
