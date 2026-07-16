@@ -11,7 +11,9 @@ export default function CatchUp() {
   const catchup = useQuery({ queryKey: ['catchup'], queryFn: api.catchup, staleTime: 60_000 });
 
   const data = catchup.data;
-  if (dismissed || !data || data.unreadStories < 8) return null;
+  // Show for a meaty unread pile OR whenever there are unopened big stories —
+  // scroll-past marking things read must not silence the highlights.
+  if (dismissed || !data || (data.unreadStories < 8 && data.big.length === 0)) return null;
 
   const dismiss = () => {
     sessionStorage.setItem('echappee-catchup-dismissed', '1');

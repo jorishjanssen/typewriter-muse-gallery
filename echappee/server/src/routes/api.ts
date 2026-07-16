@@ -229,8 +229,25 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       `SELECT ${ARTICLE_COLS} FROM articles WHERE read_at IS NULL
        ORDER BY published_at DESC LIMIT 300`
     );
+    const unreadClusters = new Set(rows.map((r) => r.cluster_id));
+
+    // Big stories are gated on OPENED, not read: with scroll-past-marks-seen,
+    // big stories get marked read in passing and would never surface here.
+    // A story stops being highlighted only once one of its articles was
+    // actually opened in the reader (or it ages out of the window).
+    const cutoff = new Date(Date.now() - 36 * 3600_000).toISOString();
+    const bigRows = await db.query<ArticleRow>(
+      `SELECT ${ARTICLE_COLS} FROM articles
+       WHERE published_at > $1
+         AND cluster_id NOT IN (
+           SELECT DISTINCT cluster_id FROM articles
+           WHERE opened_at IS NOT NULL AND cluster_id IS NOT NULL
+         )
+       ORDER BY published_at DESC LIMIT 300`,
+      [cutoff]
+    );
     const clusters = new Map<number, ArticleRow[]>();
-    for (const row of rows) {
+    for (const row of bigRows) {
       const group = clusters.get(row.cluster_id);
       if (group) group.push(row);
       else clusters.set(row.cluster_id, [row]);
@@ -249,7 +266,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       .sort((a, b) => b.score - a.score || b.article.publishedAt.localeCompare(a.article.publishedAt))
       .slice(0, 5);
     const oldest = rows.length ? rows[rows.length - 1].published_at : null;
-    return { unreadStories: clusters.size, big, oldestUnread: oldest };
+    return { unreadStories: unreadClusters.size, big, oldestUnread: oldest };
   });
 
   // ---- Races (spoiler-safe: no article data in these responses) --------------
