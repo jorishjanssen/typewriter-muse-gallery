@@ -149,6 +149,7 @@ export default function Settings() {
                     <span className="block text-xs opacity-60">
                       {s.articlesTotal} articles
                       {s.readPct !== null && ` · opened ${s.opened}, skipped ${s.skipped}`}
+                      {s.liked > 0 && ` · 👍 ${s.liked}`}
                       {s.lastOkAt && ` · last ok ${timeAgo(s.lastOkAt)}`}
                       {s.lastError && (
                         <span className="text-accent"> · error: {s.lastError.slice(0, 80)}</span>

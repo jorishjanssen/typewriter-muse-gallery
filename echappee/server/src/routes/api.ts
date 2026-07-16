@@ -25,6 +25,7 @@ interface ArticleRow {
   quote_who: string | null;
   cluster_id: number;
   read_at: string | null;
+  liked_at: string | null;
 }
 
 interface Mute {
@@ -54,6 +55,7 @@ function articleCard(row: ArticleRow) {
     brief: row.brief,
     importance: row.importance ?? 2,
     quote: row.quote_text && row.quote_who ? { text: row.quote_text, who: row.quote_who } : null,
+    liked: row.liked_at !== null,
     hasFullText: (row.content_len ?? 0) > 200,
     // ~6 chars/word, 220 wpm.
     readingMinutes:
@@ -67,7 +69,7 @@ function articleCard(row: ArticleRow) {
 const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt,
                 LENGTH(content_text) AS content_len,
                 image_url, lang, category, summary, brief, importance,
-                quote_text, quote_who, cluster_id, read_at`;
+                quote_text, quote_who, cluster_id, read_at, liked_at`;
 
 export function registerApi(app: FastifyInstance, db: Db): void {
   // ---- Feed: newest clusters, one card each --------------------------------
@@ -337,6 +339,20 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     return { ok: true };
   });
 
+  // Thumbs up — "this was a good read".
+  app.post<{ Params: { id: string } }>('/api/articles/:id/like', async (req) => {
+    await db.query('UPDATE articles SET liked_at = COALESCE(liked_at, $1) WHERE id = $2', [
+      nowIso(),
+      Number(req.params.id),
+    ]);
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/articles/:id/unlike', async (req) => {
+    await db.query('UPDATE articles SET liked_at = NULL WHERE id = $1', [Number(req.params.id)]);
+    return { ok: true };
+  });
+
   // "Keep unread" retracts the read state but not the fact it was opened.
   app.post<{ Params: { id: string } }>('/api/articles/:id/unread', async (req) => {
     await db.query('UPDATE articles SET read_at = NULL, seen_at = NULL WHERE id = $1', [
@@ -407,10 +423,16 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     // Engagement per source: of the articles you triaged (opened or
     // dismissed), how many did you actually open? Bulk "mark all read"
     // stamps neither, so it doesn't skew the rate.
-    const engagement = await db.query<{ source_key: string; opened: number; skipped: number }>(
+    const engagement = await db.query<{
+      source_key: string;
+      opened: number;
+      skipped: number;
+      liked: number;
+    }>(
       `SELECT source_key,
               SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END)::int AS opened,
-              SUM(CASE WHEN opened_at IS NULL AND seen_at IS NOT NULL THEN 1 ELSE 0 END)::int AS skipped
+              SUM(CASE WHEN opened_at IS NULL AND seen_at IS NOT NULL THEN 1 ELSE 0 END)::int AS skipped,
+              SUM(CASE WHEN liked_at IS NOT NULL THEN 1 ELSE 0 END)::int AS liked
        FROM articles GROUP BY source_key`
     );
     return SOURCES.map((s) => {
@@ -418,6 +440,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       const eng = engagement.find((x) => x.source_key === s.key);
       const opened = Number(eng?.opened ?? 0);
       const skipped = Number(eng?.skipped ?? 0);
+      const liked = Number(eng?.liked ?? 0);
       return {
         key: s.key,
         name: s.name,
@@ -431,6 +454,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         articlesTotal: Number(st?.articles_total ?? 0),
         opened,
         skipped,
+        liked,
         readPct: opened + skipped > 0 ? Math.round((opened / (opened + skipped)) * 100) : null,
       };
     });
