@@ -80,12 +80,18 @@ export function setLlmTaskModels(
   }
 }
 
-/** Pure resolution, exported for tests and the settings API. */
+/**
+ * Pure resolution, exported for tests and the settings API. The gateway
+ * check falls back to the model slug's shape ("vendor/model" = gateway
+ * slug): the Vercel function serving the settings UI has no AI key —
+ * enrichment runs in the scraper — but must still display the same
+ * resolution the scraper will use.
+ */
 export function resolveTaskModel(
   task: LlmTask,
   main: string,
   override: string | null,
-  gateway: boolean = config.llm.gateway
+  gateway: boolean = config.llm.gateway || main.includes('/')
 ): string {
   if (override) return override;
   if (gateway && BULK_TASKS.includes(task)) return CHEAP_BULK_MODEL;
