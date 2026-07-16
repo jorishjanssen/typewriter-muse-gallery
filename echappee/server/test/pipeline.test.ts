@@ -96,12 +96,33 @@ describe('sanitizeFragment', () => {
 describe('parseEnrichment', () => {
   it('parses clean and fenced JSON, clamping bad cluster indices', () => {
     const clean = parseEnrichment('{"summary":"S.","category":"racing","cluster_match":0}', 2);
-    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [], brief: null, race: null, importance: 2 });
+    expect(clean).toEqual({ summary: 'S.', category: 'racing', clusterMatch: 0, riders: [], brief: null, race: null, importance: 2, quote: null });
 
     const fenced = parseEnrichment('```json\n{"summary":"S.","category":"nonsense","cluster_match":9}\n```', 2);
-    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [], brief: null, race: null, importance: 2 });
+    expect(fenced).toEqual({ summary: 'S.', category: 'other', clusterMatch: null, riders: [], brief: null, race: null, importance: 2, quote: null });
 
     expect(parseEnrichment('no json here', 0)).toBeNull();
+  });
+
+  it('keeps a valid quote and drops junk ones', () => {
+    const ok = parseEnrichment(
+      '{"summary":"S.","category":"racing","cluster_match":null,"quote":{"text":"\\"Dit is de mooiste dag van mijn leven, ik kan het niet geloven.\\"","who":"Isaac del Toro"}}',
+      0
+    );
+    expect(ok?.quote).toEqual({
+      text: 'Dit is de mooiste dag van mijn leven, ik kan het niet geloven.',
+      who: 'Isaac del Toro',
+    });
+    const short = parseEnrichment(
+      '{"summary":"S.","category":"racing","cluster_match":null,"quote":{"text":"Top!","who":"X Y"}}',
+      0
+    );
+    expect(short?.quote).toBeNull();
+    const noWho = parseEnrichment(
+      '{"summary":"S.","category":"racing","cluster_match":null,"quote":{"text":"A quote long enough to pass the length check"}}',
+      0
+    );
+    expect(noWho?.quote).toBeNull();
   });
 
   it('clamps importance to 1-5 and defaults to 2', () => {

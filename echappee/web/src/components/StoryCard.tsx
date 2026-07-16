@@ -30,11 +30,11 @@ export default function StoryCard({
     <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>
       <article
         {...(onLongPress ? longPress : {})}
-        className={`transition-opacity ${card.read ? 'opacity-45' : ''} ${
+        className={
           grouped
             ? 'my-3 rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10 px-4 py-4'
             : 'py-4 border-b border-ink/10 dark:border-snow/10'
-        }`}
+        }
       >
         <Link to={`/article/${a.id}`} className="block group">
           <div className="flex items-center gap-2 text-xs mb-1.5">
