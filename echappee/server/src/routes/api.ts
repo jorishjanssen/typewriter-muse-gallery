@@ -291,6 +291,13 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         [id]
       )
     )[0];
+    // Guides stored before the options-only format carried a summary and
+    // per-tier prose; strip those down to ranked entry points on read.
+    const normalizeGuide = (raw: Record<string, unknown>) => {
+      if (Array.isArray(raw.options)) return raw;
+      const tiers = Array.isArray(raw.tiers) ? (raw.tiers as { fromKm: number; minutes: number | 'full' }[]) : [];
+      return { options: tiers.map((t) => ({ fromKm: t.fromKm, minutes: t.minutes, rating: 3 })) };
+    };
     return {
       id: race.id,
       raceName: race.race_name,
@@ -299,7 +306,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       articleCount: counts.total,
       previewCount: Number(counts.previews ?? 0),
       spoilerCount: counts.total - Number(counts.previews ?? 0),
-      guide: guideRow ? JSON.parse(guideRow.guide) : null,
+      guide: guideRow ? normalizeGuide(JSON.parse(guideRow.guide)) : null,
       guideGeneratedAt: guideRow?.generated_at ?? null,
     };
   });
