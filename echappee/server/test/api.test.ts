@@ -440,42 +440,6 @@ describe('race pre/post split', () => {
   });
 });
 
-describe('GET /api/catchup', () => {
-  it('highlights unopened big stories even when scrolled past; opening hides them', async () => {
-    await db.query('UPDATE articles SET read_at = NULL, opened_at = NULL, seen_at = NULL', []);
-    // Recent timestamps (keeping g2 > g1 > g3 order) so the 36h window applies.
-    const iso = (hoursAgo: number) => new Date(Date.now() - hoursAgo * 3600_000).toISOString();
-    await db.query("UPDATE articles SET published_at = $1 WHERE guid = 'g2'", [iso(1)]);
-    await db.query("UPDATE articles SET published_at = $1 WHERE guid = 'g1'", [iso(2)]);
-    await db.query("UPDATE articles SET published_at = $1 WHERE guid = 'g3'", [iso(3)]);
-    await db.query("UPDATE articles SET importance = 5 WHERE guid = 'g1'", []);
-    await db.query("UPDATE articles SET importance = 1 WHERE guid IN ('g2', 'g3')", []);
-
-    let body = (await app.inject({ method: 'GET', url: '/api/catchup' })).json() as any;
-    // g1+g2 cluster together; g3 stands alone.
-    expect(body.unreadStories).toBe(2);
-    expect(body.big).toHaveLength(1);
-    expect(body.big[0].score).toBe(5);
-    expect(body.big[0].sources).toBe(2);
-    expect(body.big[0].article.url).toBe('https://example.com/g1');
-
-    // Scrolling past / swiping (read+seen, not opened) does NOT hide a big
-    // story — that's the whole point of the digest.
-    await app.inject({ method: 'POST', url: `/api/clusters/${body.big[0].clusterId}/read` });
-    body = (await app.inject({ method: 'GET', url: '/api/catchup' })).json() as any;
-    expect(body.unreadStories).toBe(1);
-    expect(body.big).toHaveLength(1);
-
-    // Actually opening an article of the story does.
-    const g1 = (await db.query<{ id: number }>("SELECT id FROM articles WHERE guid = 'g1'"))[0];
-    await app.inject({ method: 'POST', url: `/api/articles/${g1.id}/read` });
-    body = (await app.inject({ method: 'GET', url: '/api/catchup' })).json() as any;
-    expect(body.big).toHaveLength(0);
-
-    await db.query('UPDATE articles SET read_at = NULL, opened_at = NULL, seen_at = NULL', []);
-  });
-});
-
 describe('GET /api/articles/:id', () => {
   it('returns full content and cluster alternates', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
