@@ -71,6 +71,10 @@ export interface RaceDetail {
   stageLabel: string;
   raceDate: string | null;
   articleCount: number;
+  /** Spoiler-safe build-up stories, shown openly. */
+  previewCount: number;
+  /** Reports and reactions — behind the reveal. */
+  spoilerCount: number;
   guide: { excitement: number; summary: string; tiers: WatchGuideTier[] } | null;
   guideGeneratedAt: string | null;
 }
@@ -85,7 +89,8 @@ export interface RaceBanner {
   raceId: number | null;
   raceName?: string;
   stageLabel?: string;
-  generatedAt?: string;
+  /** False while today's race has no watch guide yet (race still on). */
+  hasGuide?: boolean;
 }
 
 export interface Mute {
@@ -143,11 +148,19 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  feed: (opts: { category?: Category; rider?: string; race?: number; unread?: boolean; before?: string }) => {
+  feed: (opts: {
+    category?: Category;
+    rider?: string;
+    race?: number;
+    raceKind?: 'preview' | 'post';
+    unread?: boolean;
+    before?: string;
+  }) => {
     const params = new URLSearchParams();
     if (opts.category) params.set('category', opts.category);
     if (opts.rider) params.set('rider', opts.rider);
     if (opts.race) params.set('race', String(opts.race));
+    if (opts.raceKind) params.set('raceKind', opts.raceKind);
     if (opts.unread) params.set('unread', '1');
     if (opts.before) params.set('before', opts.before);
     return request<FeedPage>(`/api/feed?${params}`);

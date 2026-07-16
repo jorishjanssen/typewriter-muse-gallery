@@ -7,16 +7,30 @@ import StoryCard from '../components/StoryCard';
 import { api, type FeedCard } from '../lib/api';
 import { useToggleRead } from '../lib/useToggleRead';
 
-/** Spoiler-shielded stage page: watch guide first, stories only on reveal. */
+/**
+ * Stage page with a hard pre/post-race cut: previews and build-up show
+ * openly, the watch guide sits in between (or a race-day placeholder while
+ * it isn't generated yet), and post-race stories stay behind the reveal.
+ */
 export default function RaceStage() {
   const { id } = useParams<{ id: string }>();
   const [revealed, setRevealed] = useState(false);
 
   const race = useQuery({ queryKey: ['race', id], queryFn: () => api.race(id!), enabled: !!id });
+  const r = race.data;
 
-  const feed = useInfiniteQuery({
-    queryKey: ['feed', 'race', id],
-    queryFn: ({ pageParam }) => api.feed({ race: Number(id), before: pageParam }),
+  const previews = useInfiniteQuery({
+    queryKey: ['feed', 'race', id, 'preview'],
+    queryFn: ({ pageParam }) =>
+      api.feed({ race: Number(id), raceKind: 'preview', before: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextBefore ?? undefined,
+    enabled: !!id && (r?.previewCount ?? 0) > 0,
+  });
+
+  const postRace = useInfiniteQuery({
+    queryKey: ['feed', 'race', id, 'post'],
+    queryFn: ({ pageParam }) => api.feed({ race: Number(id), raceKind: 'post', before: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextBefore ?? undefined,
     enabled: !!id && revealed,
@@ -26,8 +40,8 @@ export default function RaceStage() {
   const handleToggleRead = (card: FeedCard) =>
     toggleRead.mutate({ clusterId: card.clusterId, read: !card.read });
 
-  const r = race.data;
-  const cards = feed.data?.pages.flatMap((p) => p.cards) ?? [];
+  const previewCards = previews.data?.pages.flatMap((p) => p.cards) ?? [];
+  const postCards = postRace.data?.pages.flatMap((p) => p.cards) ?? [];
 
   return (
     <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
@@ -41,6 +55,29 @@ export default function RaceStage() {
               {r.stageLabel}
               {r.raceDate ? ` · ${r.raceDate}` : ''}
             </p>
+
+            {r.previewCount > 0 && (
+              <section className="mb-6">
+                <h2 className="text-xs font-semibold uppercase tracking-wider opacity-50 mb-1">
+                  Before the race
+                </h2>
+                {previews.isLoading && (
+                  <p className="py-4 text-center opacity-60">Loading previews…</p>
+                )}
+                {previewCards.map((card) => (
+                  <StoryCard
+                    key={card.clusterId + '-' + card.article.id}
+                    card={card}
+                    onToggleRead={handleToggleRead}
+                  />
+                ))}
+                <InfiniteScroll
+                  hasMore={!!previews.hasNextPage}
+                  loading={previews.isFetchingNextPage}
+                  onMore={() => void previews.fetchNextPage()}
+                />
+              </section>
+            )}
 
             {r.guide ? (
               <div className="rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10 p-4 mb-6">
@@ -77,33 +114,45 @@ export default function RaceStage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-ink/10 dark:border-snow/15 p-4 mb-6 text-sm opacity-70">
-                No watch guide yet — it's generated from race reports shortly after they arrive.
+                {r.spoilerCount === 0
+                  ? 'No watch guide yet — it appears here shortly after the race finishes.'
+                  : "No watch guide yet — it's generated from race reports shortly after they arrive."}
               </div>
             )}
 
-            {!revealed ? (
-              <button
-                onClick={() => setRevealed(true)}
-                className="w-full rounded-xl bg-ink text-paper dark:bg-snow dark:text-night py-3 text-sm font-semibold"
-              >
-                Reveal {r.articleCount} {r.articleCount === 1 ? 'story' : 'stories'} (spoilers!)
-              </button>
-            ) : (
-              <>
-                {feed.isLoading && <p className="py-8 text-center opacity-60">Loading stories…</p>}
-                {cards.map((card) => (
-                  <StoryCard
-                    key={card.clusterId + '-' + card.article.id}
-                    card={card}
-                    onToggleRead={handleToggleRead}
+            {r.spoilerCount > 0 &&
+              (!revealed ? (
+                <button
+                  onClick={() => setRevealed(true)}
+                  className="w-full rounded-xl bg-ink text-paper dark:bg-snow dark:text-night py-3 text-sm font-semibold"
+                >
+                  Reveal {r.spoilerCount} post-race {r.spoilerCount === 1 ? 'story' : 'stories'}{' '}
+                  (spoilers!)
+                </button>
+              ) : (
+                <section>
+                  <h2 className="text-xs font-semibold uppercase tracking-wider opacity-50 mb-1">
+                    After the race
+                  </h2>
+                  {postRace.isLoading && (
+                    <p className="py-8 text-center opacity-60">Loading stories…</p>
+                  )}
+                  {postCards.map((card) => (
+                    <StoryCard
+                      key={card.clusterId + '-' + card.article.id}
+                      card={card}
+                      onToggleRead={handleToggleRead}
+                    />
+                  ))}
+                  <InfiniteScroll
+                    hasMore={!!postRace.hasNextPage}
+                    loading={postRace.isFetchingNextPage}
+                    onMore={() => void postRace.fetchNextPage()}
                   />
-                ))}
-                <InfiniteScroll
-                  hasMore={!!feed.hasNextPage}
-                  loading={feed.isFetchingNextPage}
-                  onMore={() => void feed.fetchNextPage()}
-                />
-              </>
+                </section>
+              ))}
+            {r.spoilerCount === 0 && r.previewCount === 0 && (
+              <p className="py-8 text-center text-sm opacity-60">No stories yet.</p>
             )}
           </>
         )}

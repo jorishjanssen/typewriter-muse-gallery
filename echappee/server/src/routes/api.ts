@@ -73,6 +73,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       source?: string;
       rider?: string;
       race?: string;
+      raceKind?: string;
       unread?: string;
       before?: string;
       limit?: string;
@@ -101,6 +102,9 @@ export function registerApi(app: FastifyInstance, db: Db): void {
     if (req.query.race) {
       params.push(Number(req.query.race));
       where.push(`race_id = $${params.length}`);
+      // Pre/post-race split: previews are spoiler-safe, the rest is not.
+      if (req.query.raceKind === 'preview') where.push(`race_kind = 'preview'`);
+      if (req.query.raceKind === 'post') where.push(`race_kind != 'preview'`);
     }
     if (req.query.unread === '1') where.push('read_at IS NULL');
     if (req.query.before) {
@@ -266,9 +270,13 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         [id]
       )
     )[0];
+    // Previews are safe to show openly; everything else (reports, reactions)
+    // can spoil the result and stays behind the reveal.
     const counts = (
-      await db.query<{ total: number }>(
-        'SELECT COUNT(*)::int AS total FROM articles WHERE race_id = $1',
+      await db.query<{ total: number; previews: number }>(
+        `SELECT COUNT(*)::int AS total,
+                SUM(CASE WHEN race_kind = 'preview' THEN 1 ELSE 0 END)::int AS previews
+         FROM articles WHERE race_id = $1`,
         [id]
       )
     )[0];
@@ -278,22 +286,29 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       stageLabel: race.stage_label,
       raceDate: race.race_date,
       articleCount: counts.total,
+      previewCount: Number(counts.previews ?? 0),
+      spoilerCount: counts.total - Number(counts.previews ?? 0),
       guide: guideRow ? JSON.parse(guideRow.guide) : null,
       guideGeneratedAt: guideRow?.generated_at ?? null,
     };
   });
 
-  // Feed banner: the most recently generated watch guide, if it's fresh.
-  // Spoiler-safe — only the race identity, never guide content or articles.
+  // Feed banner for TODAY's race day only. Two phases: before the watch
+  // guide exists (race still on / reports not in) it points at the race's
+  // build-up; once the guide is generated it announces it. Spoiler-safe —
+  // only the race identity, never guide content or articles.
   app.get('/api/race-banner', async () => {
-    const cutoff = new Date(Date.now() - 36 * 3600_000).toISOString();
+    // The reader is in the Netherlands; "today" follows their calendar.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' });
     const row = (
-      await db.query<{ id: number; race_name: string; stage_label: string; generated_at: string }>(
-        `SELECT r.id, r.race_name, r.stage_label, w.generated_at
-         FROM watch_guides w JOIN races r ON r.id = w.race_id
-         WHERE w.generated_at > $1
-         ORDER BY w.generated_at DESC LIMIT 1`,
-        [cutoff]
+      await db.query<{ id: number; race_name: string; stage_label: string; has_guide: boolean }>(
+        `SELECT r.id, r.race_name, r.stage_label,
+                EXISTS (SELECT 1 FROM watch_guides w WHERE w.race_id = r.id) AS has_guide
+         FROM races r JOIN articles a ON a.race_id = r.id
+         WHERE r.race_date = $1
+         GROUP BY r.id
+         ORDER BY COUNT(a.id) DESC LIMIT 1`,
+        [today]
       )
     )[0];
     if (!row) return { raceId: null };
@@ -301,7 +316,7 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       raceId: row.id,
       raceName: row.race_name,
       stageLabel: row.stage_label,
-      generatedAt: row.generated_at,
+      hasGuide: Boolean(row.has_guide),
     };
   });
 

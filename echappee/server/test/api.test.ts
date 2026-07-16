@@ -316,31 +316,74 @@ describe('cluster brief in feed', () => {
 });
 
 describe('GET /api/race-banner', () => {
-  it('surfaces a fresh watch guide and hides stale ones', async () => {
-    // No guides yet.
+  it('shows only on race day, in pre-guide and guide-ready phases', async () => {
+    // The TdF race from the races test is dated 2026-07-14 (not today) —
+    // past races never banner, guide or not.
     const empty = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
     expect(empty.raceId).toBeNull();
 
-    // The races test above created "Tour de France 2026" — give it a guide.
+    // A race happening TODAY (reader's calendar) banners even without a guide.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' });
+    const { linkRace } = await import('../src/pipeline/refresh.js');
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const solo = feed.cards.find((c) => c.alternates.length === 0).article;
+    await linkRace(db, solo.id, {
+      name: 'Ronde van Vandaag', year: 2026, stage: null, date: today, kind: 'preview',
+    });
+
+    const pre = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
+    expect(pre.raceName).toBe('Ronde van Vandaag 2026');
+    expect(pre.hasGuide).toBe(false);
+
+    // The guide arriving flips the phase.
     const race = (
-      await db.query<{ id: number }>("SELECT id FROM races WHERE race_name = 'Tour de France 2026'")
+      await db.query<{ id: number }>("SELECT id FROM races WHERE race_name = 'Ronde van Vandaag 2026'")
     )[0];
     await db.query(
       'INSERT INTO watch_guides (race_id, generated_at, article_count, guide) VALUES ($1, $2, $3, $4)',
       [race.id, new Date().toISOString(), 1, '{"excitement":4,"summary":"x","tiers":[]}']
     );
-    const fresh = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
-    expect(fresh.raceId).toBe(race.id);
-    expect(fresh.raceName).toBe('Tour de France 2026');
-    expect(fresh.stageLabel).toBe('Stage 10');
+    const ready = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
+    expect(ready.raceId).toBe(race.id);
+    expect(ready.hasGuide).toBe(true);
     // Spoiler safety: guide content is never in the banner payload.
-    expect(JSON.stringify(fresh)).not.toContain('excitement');
+    expect(JSON.stringify(ready)).not.toContain('excitement');
 
-    // A guide older than 36h no longer banners.
-    const stale = new Date(Date.now() - 48 * 3600_000).toISOString();
-    await db.query('UPDATE watch_guides SET generated_at = $1 WHERE race_id = $2', [stale, race.id]);
+    // Clean up today's race so later tests see the original state.
+    await db.query('UPDATE articles SET race_id = NULL, race_kind = NULL WHERE race_id = $1', [race.id]);
+    await db.query('DELETE FROM races WHERE id = $1', [race.id]);
     const gone = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
     expect(gone.raceId).toBeNull();
+  });
+});
+
+describe('race pre/post split', () => {
+  it('separates previews from post-race stories in counts and the feed', async () => {
+    const { linkRace } = await import('../src/pipeline/refresh.js');
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const grouped = feed.cards.find((c) => c.alternates.length === 1);
+    // g1 is already linked to TdF stage 10 as a report; link g2 as a preview.
+    await linkRace(db, grouped.alternates[0].id, {
+      name: 'Tour de France', year: 2026, stage: 10, date: '2026-07-14', kind: 'preview',
+    });
+
+    const races = (await app.inject({ method: 'GET', url: '/api/races' })).json() as any[];
+    const tdf = races.find((r) => r.raceName === 'Tour de France 2026');
+    const detail = (await app.inject({ method: 'GET', url: `/api/races/${tdf.id}` })).json() as any;
+    expect(detail.previewCount).toBe(1);
+    expect(detail.spoilerCount).toBe(1);
+
+    const previews = (
+      await app.inject({ method: 'GET', url: `/api/feed?race=${tdf.id}&raceKind=preview` })
+    ).json() as { cards: any[] };
+    expect(previews.cards).toHaveLength(1);
+    expect(previews.cards[0].article.id).toBe(grouped.alternates[0].id);
+
+    const post = (
+      await app.inject({ method: 'GET', url: `/api/feed?race=${tdf.id}&raceKind=post` })
+    ).json() as { cards: any[] };
+    expect(post.cards).toHaveLength(1);
+    expect(post.cards[0].article.id).toBe(grouped.article.id);
   });
 });
 
