@@ -200,6 +200,20 @@ describe('LLM model setting', () => {
     });
     expect(cleared.json().tasks.merge.override).toBeNull();
   });
+
+  it('shows the cheap bulk default for gateway-style main models even without a key', async () => {
+    // The Vercel function serving the settings UI has no AI key; the display
+    // must still match what the (keyed) scraper will resolve.
+    await app.inject({
+      method: 'PUT', url: '/api/settings/llm', payload: { model: 'deepseek/deepseek-v4-pro' },
+    });
+    const body = (await app.inject({ method: 'GET', url: '/api/settings/llm' })).json() as any;
+    expect(body.tasks.enrich.effective).toBe('deepseek/deepseek-v3.1');
+    expect(body.tasks.brief.effective).toBe('deepseek/deepseek-v3.1');
+    expect(body.tasks.merge.effective).toBe('deepseek/deepseek-v4-pro');
+    expect(body.tasks.guide.effective).toBe('deepseek/deepseek-v4-pro');
+    await app.inject({ method: 'PUT', url: '/api/settings/llm', payload: { model: '' } });
+  });
 });
 
 describe('races', () => {
