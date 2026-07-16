@@ -189,6 +189,8 @@ export const api = {
   markUnread: (id: number) => request(`/api/articles/${id}/unread`, { method: 'POST' }),
   like: (id: number) => request(`/api/articles/${id}/like`, { method: 'POST' }),
   unlike: (id: number) => request(`/api/articles/${id}/unlike`, { method: 'POST' }),
+  nextUnread: (id: number | string) =>
+    request<{ id: number | null }>(`/api/articles/${id}/next-unread`),
   markClusterRead: (id: number) => request(`/api/clusters/${id}/read`, { method: 'POST' }),
   markClusterUnread: (id: number) => request(`/api/clusters/${id}/unread`, { method: 'POST' }),
   readAll: () => request('/api/read-all', { method: 'POST' }),
