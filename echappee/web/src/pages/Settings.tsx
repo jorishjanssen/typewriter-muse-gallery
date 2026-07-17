@@ -63,9 +63,8 @@ export default function Settings() {
             <span>
               <span className="font-medium">Scrolling past a story marks it as seen</span>
               <span className="block opacity-60">
-                Stories you scroll past leave the New list — they stay visible until
-                you refresh. Skips are tracked per source so you can see which sources you
-                actually read.
+                The accent dot fades once a story has scrolled past. Skips are tracked
+                per source so you can see which sources you actually read.
               </span>
             </span>
           </label>
