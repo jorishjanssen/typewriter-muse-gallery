@@ -11,11 +11,10 @@ import { api, CATEGORY_LABELS, type Category, type FeedCard } from '../lib/api';
 import { useToggleRead } from '../lib/useToggleRead';
 
 const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 'offroad', 'other'];
-const SHOW_ALL_KEY = 'echappee-show-read';
 // Scroll-past-marks-seen. On unless explicitly disabled.
 const AUTOSEEN_KEY = 'echappee-autoseen';
-// "New since your last visit" line (All view). A visit ends after 30 minutes
-// of inactivity; the marker then remembers where the previous visit left off.
+// "New since your last visit" line. A visit ends after 30 minutes of
+// inactivity; the marker then remembers where the previous visit left off.
 const LAST_SEEN_KEY = 'echappee-last-seen-at';
 const NEW_SINCE_KEY = 'echappee-new-since';
 const VISIT_GAP_MS = 30 * 60_000;
@@ -96,25 +95,14 @@ function PhotoBreak({ card }: { card: FeedCard }) {
 
 export default function Feed() {
   const [category, setCategory] = useState<Category | 'all'>('all');
-  // Unread is the default view; the preference is remembered per device.
-  const [showAll, setShowAll] = useState(() => localStorage.getItem(SHOW_ALL_KEY) === '1');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [raceOnly, setRaceOnly] = useState(false);
   const [raceBlockOpen, setRaceBlockOpen] = useState(false);
   // Captured once per mount: where the previous visit ended.
   const [newSince] = useState(trackVisit);
   const autoSeen = localStorage.getItem(AUTOSEEN_KEY) !== '0';
-  const [undo, setUndo] = useState<{ clusterId: number; title: string } | null>(null);
   const [sheetCard, setSheetCard] = useState<FeedCard | null>(null);
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stories auto-marked seen this session stay visible instead of vanishing
-  // mid-scroll like a manual swipe does.
-  const autoRead = useRef(new Set<number>());
   const queryClient = useQueryClient();
-
-  useEffect(() => {
-    localStorage.setItem(SHOW_ALL_KEY, showAll ? '1' : '0');
-  }, [showAll]);
 
   // Keep the activity timestamp fresh while the feed stays open, so a long
   // reading session doesn't count as several visits.
@@ -133,12 +121,11 @@ export default function Feed() {
   const todayRaceId = raceToday.data?.raceId ?? null;
 
   const feed = useInfiniteQuery({
-    queryKey: ['feed', category, !showAll, raceOnly ? todayRaceId : null],
+    queryKey: ['feed', category, raceOnly ? todayRaceId : null],
     queryFn: ({ pageParam }) =>
       api.feed({
         category: category === 'all' ? undefined : category,
         race: raceOnly && todayRaceId ? todayRaceId : undefined,
-        unread: !showAll,
         before: pageParam,
       }),
     initialPageParam: undefined as string | undefined,
@@ -170,28 +157,17 @@ export default function Feed() {
     },
   });
 
+  // Cards never vanish from the single feed — toggling just flips the dot in
+  // place, so no undo toast is needed.
   const handleToggleRead = (card: FeedCard) => {
-    const read = !card.read;
-    toggleRead.mutate({ clusterId: card.clusterId, read });
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    if (read && !showAll) {
-      // The card vanishes from the unread view — offer a way back.
-      setUndo({ clusterId: card.clusterId, title: card.article.title });
-      undoTimer.current = setTimeout(() => setUndo(null), 5000);
-    } else {
-      setUndo(null);
-    }
+    toggleRead.mutate({ clusterId: card.clusterId, read: !card.read });
   };
 
   const handleAutoSeen = (card: FeedCard) => {
-    if (card.read || autoRead.current.has(card.clusterId)) return;
-    autoRead.current.add(card.clusterId);
-    toggleRead.mutate({ clusterId: card.clusterId, read: true });
+    if (!card.read) toggleRead.mutate({ clusterId: card.clusterId, read: true });
   };
 
-  const cards = (feed.data?.pages.flatMap((p) => p.cards) ?? []).filter(
-    (c) => showAll || !c.read || autoRead.current.has(c.clusterId)
-  );
+  const cards = feed.data?.pages.flatMap((p) => p.cards) ?? [];
 
   const handleRefresh = async () => {
     // Locally this also triggers a scrape; on Vercel scraping is the
@@ -231,16 +207,16 @@ export default function Feed() {
     }
   }
 
-  // Assemble the brief stream: day dividers, the new-since-last-visit line
-  // (All view), a pull-quote at most every other brief, and a photo break
-  // every 4 briefs (image borrowed from a nearby story, each used once).
+  // Assemble the brief stream: day dividers, the new-since-last-visit line,
+  // a pull-quote at most every other brief, and a photo break every 4 briefs
+  // (image borrowed from a nearby story, each used once).
   const stream: React.ReactNode[] = [];
   let lastDay = '';
   let sinceQuote = 2;
   let sincePhoto = 0;
   const usedPhotos = new Set<number>();
   const photoPool: FeedCard[] = [];
-  let newSincePending = showAll && newSince !== null;
+  let newSincePending = newSince !== null;
 
   const renderCard = (card: FeedCard) => {
     const hasQuote = [card.article, ...card.alternates].some((a) => a.quote);
@@ -248,7 +224,7 @@ export default function Feed() {
     sinceQuote = showQuote ? 0 : sinceQuote + 1;
     return (
       <div key={card.clusterId + '-' + card.article.id}>
-        <AutoSeen enabled={autoSeen && !showAll} onSeen={() => handleAutoSeen(card)}>
+        <AutoSeen enabled={autoSeen} onSeen={() => handleAutoSeen(card)}>
           <BriefCard
             card={card}
             onToggleRead={handleToggleRead}
@@ -346,19 +322,6 @@ export default function Feed() {
       <div className="mx-auto max-w-2xl px-4">
         <RaceBanner />
         <div className="flex gap-2 overflow-x-auto py-3 -mx-4 px-4 scrollbar-none">
-          <div className="flex shrink-0 rounded-full border border-ink/15 dark:border-snow/20 p-0.5">
-            {([false, true] as const).map((all) => (
-              <button
-                key={String(all)}
-                onClick={() => setShowAll(all)}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                  showAll === all ? 'bg-ink text-paper dark:bg-snow dark:text-night' : 'opacity-60'
-                }`}
-              >
-                {all ? 'All' : 'New'}
-              </button>
-            ))}
-          </div>
           {todayRaceId !== null && (
             <button
               onClick={() => setRaceOnly((v) => !v)}
@@ -412,14 +375,8 @@ export default function Feed() {
         )}
         {feed.isSuccess && cards.length === 0 && (
           <div className="py-16 text-center opacity-60 space-y-2">
-            <p className="font-serif text-lg">
-              {showAll ? 'Nothing here yet.' : 'All caught up! 🚴'}
-            </p>
-            <p className="text-sm">
-              {showAll
-                ? 'New articles arrive with the next scrape.'
-                : 'New stories arrive with the next scrape — flip to "All" to look back.'}
-            </p>
+            <p className="font-serif text-lg">Nothing here yet.</p>
+            <p className="text-sm">New articles arrive with the next scrape.</p>
           </div>
         )}
 
@@ -462,21 +419,6 @@ export default function Feed() {
         }
       />
 
-      {undo && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 rounded-full bg-ink text-paper dark:bg-snow dark:text-night pl-4 pr-2 py-2 text-sm shadow-lg">
-          <span className="max-w-[50vw] truncate">Seen</span>
-          <button
-            onClick={() => {
-              if (undoTimer.current) clearTimeout(undoTimer.current);
-              toggleRead.mutate({ clusterId: undo.clusterId, read: false });
-              setUndo(null);
-            }}
-            className="rounded-full bg-accent text-white px-3 py-1 font-semibold"
-          >
-            Undo
-          </button>
-        </div>
-      )}
     </div>
   );
 }

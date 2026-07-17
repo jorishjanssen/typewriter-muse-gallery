@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '../lib/api';
 
@@ -9,15 +10,45 @@ const TABS = [
   { to: '/settings', label: 'Settings', match: (p: string) => p.startsWith('/settings'), icon: <><circle cx="12" cy="12" r="3" /><path d="M12 1v4m0 14v4M4.2 4.2l2.8 2.8m10 10 2.8 2.8M1 12h4m14 0h4M4.2 19.8l2.8-2.8m10-10 2.8-2.8" /></> },
 ];
 
+/** Slides the tab bar away while scrolling down, back on any scroll up. */
+function useAutoHide(pathname: string): boolean {
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const dy = y - lastY;
+      lastY = y;
+      // Always visible near the top (also covers iOS rubber-banding).
+      if (y < 80) setHidden(false);
+      else if (dy > 6) setHidden(true);
+      else if (dy < -6) setHidden(false);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Navigating always brings the bar back.
+  useEffect(() => setHidden(false), [pathname]);
+
+  return hidden;
+}
+
 /** Thumb-reach navigation: fixed bottom tab bar, safe-area aware. */
 export default function TabBar() {
   const { pathname } = useLocation();
+  const hidden = useAutoHide(pathname);
   // The unread badge lives here now that there is no header.
   const status = useQuery({ queryKey: ['status'], queryFn: api.status, refetchInterval: 60_000 });
   const unread = status.data?.unread ?? 0;
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-ink/10 dark:border-snow/10 bg-paper/95 dark:bg-night/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
+    <nav
+      className={`fixed inset-x-0 bottom-0 z-20 border-t border-ink/10 dark:border-snow/10 bg-paper/95 dark:bg-night/95 backdrop-blur pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ${
+        hidden ? 'translate-y-full' : ''
+      }`}
+    >
       <div className="mx-auto flex max-w-2xl">
         {TABS.map((t) => {
           const active = t.match(pathname);
