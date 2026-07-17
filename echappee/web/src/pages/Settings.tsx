@@ -43,11 +43,11 @@ export default function Settings() {
             onClick={() => readAll.mutate()}
             className="rounded-full border border-ink/15 dark:border-snow/20 px-4 py-2 text-sm font-medium opacity-80 hover:opacity-100"
           >
-            Mark everything as read
+            Mark everything as seen
           </button>
           {status.data && (
             <p className="mt-2 text-sm opacity-60">
-              {status.data.unread} unread of {status.data.articles} articles.
+              {status.data.unread} new of {status.data.articles} stories.
             </p>
           )}
           <label className="mt-4 flex items-start gap-2.5 text-sm cursor-pointer">
@@ -63,7 +63,7 @@ export default function Settings() {
             <span>
               <span className="font-medium">Scrolling past a story marks it as seen</span>
               <span className="block opacity-60">
-                Stories you scroll past leave the unread list — they stay visible, dimmed, until
+                Stories you scroll past leave the New list — they stay visible until
                 you refresh. Skips are tracked per source so you can see which sources you
                 actually read.
               </span>

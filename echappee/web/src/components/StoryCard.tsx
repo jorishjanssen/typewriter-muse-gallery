@@ -52,8 +52,8 @@ export default function StoryCard({
               </>
             )}
             <button
-              aria-label={card.read ? 'Mark as unread' : 'Mark as read'}
-              title={card.read ? 'Mark as unread' : 'Mark as read'}
+              aria-label={card.read ? 'Mark as new' : 'Mark as seen'}
+              title={card.read ? 'Mark as new' : 'Mark as seen'}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
