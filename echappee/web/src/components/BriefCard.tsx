@@ -5,20 +5,47 @@ import { useLongPress } from '../lib/useLongPress';
 import SwipeToRead from './SwipeToRead';
 
 /**
+ * The story's own photo. Small images blown up to full width look
+ * pixelated, so anything under 600×300 natural pixels is dropped once
+ * the browser knows its real size.
+ */
+function CardPhoto({ src, articleId }: { src: string; articleId: number }) {
+  const [tooSmall, setTooSmall] = useState(false);
+  if (tooSmall) return null;
+  return (
+    <Link to={`/article/${articleId}`} className="block mt-2.5">
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        onLoad={(e) => {
+          const img = e.currentTarget;
+          if (img.naturalWidth < 600 || img.naturalHeight < 300) setTooSmall(true);
+        }}
+        onError={() => setTooSmall(true)}
+        className="w-full aspect-[16/9] rounded-2xl object-cover"
+      />
+    </Link>
+  );
+}
+
+/**
  * Compact, Twitter-style rendering of a story: the news itself in ~360
  * chars. Multi-source stories get a tappable sources drawer; a pull-quote
- * shows when the feed decides this card may carry one.
+ * or the story's photo shows when the feed decides this card may carry one.
  */
 export default function BriefCard({
   card,
   onToggleRead,
   onLongPress,
   showQuote = false,
+  showPhoto = false,
 }: {
   card: FeedCard;
   onToggleRead: (card: FeedCard) => void;
   onLongPress?: (card: FeedCard) => void;
   showQuote?: boolean;
+  showPhoto?: boolean;
 }) {
   const a = card.article;
   const text = card.clusterBrief ?? a.brief ?? a.summary ?? a.excerpt ?? a.title;
@@ -28,6 +55,9 @@ export default function BriefCard({
     ? ([a, ...card.alternates].find((x) => x.quote)?.quote ?? null)
     : null;
   const sources: ArticleCard[] = [a, ...card.alternates];
+  // This story's photo — from the displayed article when it has one, else
+  // any source in the cluster.
+  const photoOwner = showPhoto ? sources.find((s) => s.imageUrl) : undefined;
   // Story importance = the highest rating across its coverage. Only 4 and 5
   // get a marker (one or two bolts); routine stories stay clean.
   const importance = Math.max(...sources.map((s) => s.importance));
@@ -100,6 +130,8 @@ export default function BriefCard({
             <footer className="mt-0.5 not-italic font-sans text-xs opacity-60">— {quote.who}</footer>
           </blockquote>
         )}
+
+        {photoOwner && <CardPhoto src={photoOwner.imageUrl!} articleId={photoOwner.id} />}
 
         {sourcesOpen && (
           <ul className="mt-2.5 space-y-2 border-l-2 border-accent/30 pl-3">
