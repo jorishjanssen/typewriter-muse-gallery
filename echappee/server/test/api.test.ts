@@ -399,6 +399,12 @@ describe('GET /api/race-banner', () => {
     const ready = (await app.inject({ method: 'GET', url: '/api/race-banner' })).json() as any;
     expect(ready.raceId).toBe(race.id);
     expect(ready.hasGuide).toBe(true);
+
+    // Feed cards expose the race link so the client can collapse race-day
+    // coverage; other stories carry their own race (or none), never this one.
+    const linked = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    expect(linked.cards.find((c) => c.article.id === solo.id).raceId).toBe(race.id);
+    expect(linked.cards.find((c) => c.article.id !== solo.id).raceId).not.toBe(race.id);
     // Spoiler safety: guide content is never in the banner payload.
     expect(JSON.stringify(ready)).not.toContain('excitement');
 

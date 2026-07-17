@@ -14,6 +14,23 @@ const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 
 const SHOW_ALL_KEY = 'echappee-show-read';
 // Scroll-past-marks-seen. On unless explicitly disabled.
 const AUTOSEEN_KEY = 'echappee-autoseen';
+// "New since your last visit" line (All view). A visit ends after 30 minutes
+// of inactivity; the marker then remembers where the previous visit left off.
+const LAST_SEEN_KEY = 'echappee-last-seen-at';
+const NEW_SINCE_KEY = 'echappee-new-since';
+const VISIT_GAP_MS = 30 * 60_000;
+
+/** Rolls the visit marker forward when a new visit starts; returns the marker (ms). */
+function trackVisit(): number | null {
+  const now = Date.now();
+  const lastSeen = Number(localStorage.getItem(LAST_SEEN_KEY) ?? 0);
+  if (lastSeen && now - lastSeen > VISIT_GAP_MS) {
+    localStorage.setItem(NEW_SINCE_KEY, String(lastSeen));
+  }
+  localStorage.setItem(LAST_SEEN_KEY, String(now));
+  const marker = Number(localStorage.getItem(NEW_SINCE_KEY) ?? 0);
+  return marker || null;
+}
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -83,6 +100,9 @@ export default function Feed() {
   const [showAll, setShowAll] = useState(() => localStorage.getItem(SHOW_ALL_KEY) === '1');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [raceOnly, setRaceOnly] = useState(false);
+  const [raceBlockOpen, setRaceBlockOpen] = useState(false);
+  // Captured once per mount: where the previous visit ended.
+  const [newSince] = useState(trackVisit);
   const autoSeen = localStorage.getItem(AUTOSEEN_KEY) !== '0';
   const [undo, setUndo] = useState<{ clusterId: number; title: string } | null>(null);
   const [sheetCard, setSheetCard] = useState<FeedCard | null>(null);
@@ -95,6 +115,13 @@ export default function Feed() {
   useEffect(() => {
     localStorage.setItem(SHOW_ALL_KEY, showAll ? '1' : '0');
   }, [showAll]);
+
+  // Keep the activity timestamp fresh while the feed stays open, so a long
+  // reading session doesn't count as several visits.
+  useEffect(() => {
+    const iv = setInterval(() => localStorage.setItem(LAST_SEEN_KEY, String(Date.now())), 60_000);
+    return () => clearInterval(iv);
+  }, []);
 
   // Today's race (if any) powers the leftmost filter chip; the RaceBanner
   // component shares this cached query.
@@ -183,32 +210,43 @@ export default function Feed() {
       )
     : [];
 
-  // Assemble the brief stream: day dividers, a pull-quote at most every
-  // other brief, and a photo break every 4 briefs (image borrowed from a
-  // nearby story, each used once).
+  // Race-day calm: while there's a race today, its live coverage folds into
+  // one expandable block anchored where the newest of those stories sits.
+  // The 🏁 filter is the "show me everything about the race" path, so no
+  // collapsing there; small trickles (1–2 stories) also stay inline.
+  const raceCards =
+    todayRaceId !== null && !raceOnly ? cards.filter((c) => c.raceId === todayRaceId) : [];
+  const collapseRace = raceCards.length >= 3;
+  const raceLabel =
+    [raceToday.data?.raceName, raceToday.data?.stageLabel].filter(Boolean).join(' · ') ||
+    "today's race";
+
+  const items: { card: FeedCard; raceBlock?: FeedCard[] }[] = [];
+  for (const card of cards) {
+    if (collapseRace && card.raceId === todayRaceId) {
+      // The newest race story carries the whole block; the rest fold in.
+      if (card === raceCards[0]) items.push({ card, raceBlock: raceCards });
+    } else {
+      items.push({ card });
+    }
+  }
+
+  // Assemble the brief stream: day dividers, the new-since-last-visit line
+  // (All view), a pull-quote at most every other brief, and a photo break
+  // every 4 briefs (image borrowed from a nearby story, each used once).
   const stream: React.ReactNode[] = [];
   let lastDay = '';
   let sinceQuote = 2;
+  let sincePhoto = 0;
   const usedPhotos = new Set<number>();
-  cards.forEach((card, i) => {
-    // Divider by the same timestamp that positions the card (its newest
-    // coverage), not the displayed article — those can differ by a day.
-    const day = dayLabel(card.latestPublishedAt ?? card.article.publishedAt);
-    if (day !== lastDay) {
-      stream.push(
-        <div
-          key={`day-${day}`}
-          className="pt-4 pb-1 text-xs font-semibold uppercase tracking-wider opacity-50"
-        >
-          {day}
-        </div>
-      );
-      lastDay = day;
-    }
+  const photoPool: FeedCard[] = [];
+  let newSincePending = showAll && newSince !== null;
+
+  const renderCard = (card: FeedCard) => {
     const hasQuote = [card.article, ...card.alternates].some((a) => a.quote);
     const showQuote = hasQuote && sinceQuote >= 2;
     sinceQuote = showQuote ? 0 : sinceQuote + 1;
-    stream.push(
+    return (
       <div key={card.clusterId + '-' + card.article.id}>
         <AutoSeen enabled={autoSeen && !showAll} onSeen={() => handleAutoSeen(card)}>
           <BriefCard
@@ -220,14 +258,85 @@ export default function Feed() {
         </AutoSeen>
       </div>
     );
-    if ((i + 1) % 4 === 0) {
-      const photoCard = cards
-        .slice(Math.max(0, i - 3), i + 1)
+  };
+
+  items.forEach((item, i) => {
+    // Divider by the same timestamp that positions the card (its newest
+    // coverage), not the displayed article — those can differ by a day.
+    const time = item.card.latestPublishedAt ?? item.card.article.publishedAt;
+    if (newSincePending && newSince !== null && Date.parse(time) <= newSince) {
+      // The boundary between this visit's arrivals and everything older —
+      // only drawn when it falls inside the list (something new above it).
+      if (i > 0) {
+        stream.push(
+          <div key="new-since" className="flex items-center gap-3 py-2" role="separator">
+            <span className="h-px flex-1 bg-accent/40" />
+            <span className="text-xs font-semibold text-accent">New since your last visit</span>
+            <span className="h-px flex-1 bg-accent/40" />
+          </div>
+        );
+      }
+      newSincePending = false;
+    }
+    const day = dayLabel(time);
+    if (day !== lastDay) {
+      stream.push(
+        <div
+          key={`day-${day}`}
+          className="pt-4 pb-1 text-xs font-semibold uppercase tracking-wider opacity-50"
+        >
+          {day}
+        </div>
+      );
+      lastDay = day;
+    }
+
+    if (item.raceBlock) {
+      const newCount = item.raceBlock.filter((c) => !c.read).length;
+      stream.push(
+        <div
+          key={`race-block-${todayRaceId}`}
+          className="my-3 rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10"
+        >
+          <button
+            onClick={() => setRaceBlockOpen((v) => !v)}
+            aria-expanded={raceBlockOpen}
+            className="flex w-full items-center gap-2 px-4 py-3 text-sm"
+          >
+            <span aria-hidden>🏁</span>
+            <span className="min-w-0 truncate text-left font-semibold">
+              {item.raceBlock.length} stories about {raceLabel}
+            </span>
+            {!raceBlockOpen && newCount > 0 && (
+              <span className="shrink-0 rounded-full bg-accent px-2 py-px text-xs font-semibold text-white">
+                {newCount} new
+              </span>
+            )}
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"
+              className={`ml-auto shrink-0 opacity-50 transition-transform ${raceBlockOpen ? 'rotate-180' : ''}`}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          {raceBlockOpen && <div className="px-4 pb-1">{item.raceBlock.map(renderCard)}</div>}
+        </div>
+      );
+      return;
+    }
+
+    stream.push(renderCard(item.card));
+    photoPool.push(item.card);
+    sincePhoto += 1;
+    if (sincePhoto >= 4) {
+      const photoCard = photoPool
+        .slice(-4)
         .find((c) => c.article.imageUrl && !usedPhotos.has(c.article.id));
       if (photoCard) {
         usedPhotos.add(photoCard.article.id);
         stream.push(<PhotoBreak key={`photo-${photoCard.article.id}`} card={photoCard} />);
       }
+      sincePhoto = 0;
     }
   });
 
