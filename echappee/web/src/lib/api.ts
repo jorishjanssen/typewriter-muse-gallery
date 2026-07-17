@@ -32,6 +32,8 @@ export interface FeedCard {
   clusterBrief: string | null;
   /** Newest coverage in the cluster — drives feed position and day dividers. */
   latestPublishedAt: string;
+  /** Race this story belongs to, when linked — used to collapse race-day coverage. */
+  raceId: number | null;
   read: boolean;
 }
 

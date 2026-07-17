@@ -24,6 +24,7 @@ interface ArticleRow {
   quote_text: string | null;
   quote_who: string | null;
   cluster_id: number;
+  race_id: number | null;
   read_at: string | null;
   liked_at: string | null;
 }
@@ -69,7 +70,7 @@ function articleCard(row: ArticleRow) {
 const ARTICLE_COLS = `id, source_key, url, title, author, published_at, excerpt,
                 LENGTH(content_text) AS content_len,
                 image_url, lang, category, summary, brief, importance,
-                quote_text, quote_who, cluster_id, read_at, liked_at`;
+                quote_text, quote_who, cluster_id, race_id, read_at, liked_at`;
 
 export function registerApi(app: FastifyInstance, db: Db): void {
   // ---- Feed: newest clusters, one card each --------------------------------
@@ -173,6 +174,9 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         // same timestamp or a story with an older "best" article flips the
         // Today/Yesterday labels around itself.
         latestPublishedAt: group[0].published_at,
+        // The race this story belongs to (any linked article in the cluster)
+        // — lets the feed collapse today's-race coverage into one block.
+        raceId: group.find((r) => r.race_id !== null)?.race_id ?? null,
         read: group.every((r) => r.read_at !== null),
       });
       lastPublished = group[group.length - 1].published_at;
