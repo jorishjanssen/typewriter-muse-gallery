@@ -5,12 +5,12 @@ import ActionSheet from '../components/ActionSheet';
 import BriefCard from '../components/BriefCard';
 import InfiniteScroll from '../components/InfiniteScroll';
 import PullToRefresh from '../components/PullToRefresh';
-import RaceBanner from '../components/RaceBanner';
 import { SkeletonFeed } from '../components/Skeleton';
 import { api, CATEGORY_LABELS, type Category, type FeedCard } from '../lib/api';
 import { useToggleRead } from '../lib/useToggleRead';
 
-const CHIP_ORDER: (Category | 'all')[] = ['all', 'racing', 'transfers', 'gear', 'offroad', 'other'];
+// The only two topics worth a dedicated chip; tapping the active one clears it.
+const FILTER_CHIPS: Category[] = ['racing', 'gear'];
 // Scroll-past-marks-seen. On unless explicitly disabled.
 const AUTOSEEN_KEY = 'echappee-autoseen';
 // "New since your last visit" line. A visit ends after 30 minutes of
@@ -95,7 +95,6 @@ function PhotoBreak({ card }: { card: FeedCard }) {
 
 export default function Feed() {
   const [category, setCategory] = useState<Category | 'all'>('all');
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [raceOnly, setRaceOnly] = useState(false);
   const [raceBlockOpen, setRaceBlockOpen] = useState(false);
   // Captured once per mount: where the previous visit ended.
@@ -111,8 +110,8 @@ export default function Feed() {
     return () => clearInterval(iv);
   }, []);
 
-  // Today's race (if any) powers the leftmost filter chip; the RaceBanner
-  // component shares this cached query.
+  // Today's race (if any) powers the leftmost filter chip and the race-day
+  // collapse block.
   const raceToday = useQuery({
     queryKey: ['race-banner'],
     queryFn: api.raceBanner,
@@ -320,7 +319,6 @@ export default function Feed() {
     <div className="min-h-screen pb-24 pt-[env(safe-area-inset-top)]">
       <PullToRefresh onRefresh={handleRefresh}>
       <div className="mx-auto max-w-2xl px-4">
-        <RaceBanner />
         <div className="flex gap-2 overflow-x-auto py-3 -mx-4 px-4 scrollbar-none">
           {todayRaceId !== null && (
             <button
@@ -334,38 +332,20 @@ export default function Feed() {
               🏁 Today's race
             </button>
           )}
-          <button
-            onClick={() => setFiltersOpen((v) => !v)}
-            aria-expanded={filtersOpen}
-            className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
-              category !== 'all'
-                ? 'bg-ink text-paper dark:bg-snow dark:text-night border-transparent'
-                : 'border-ink/15 dark:border-snow/20 opacity-70 hover:opacity-100'
-            }`}
-          >
-            {category === 'all' ? 'Filter' : CATEGORY_LABELS[category]} {filtersOpen ? '▴' : '▾'}
-          </button>
+          {FILTER_CHIPS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCategory(category === c ? 'all' : c)}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
+                category === c
+                  ? 'bg-ink text-paper dark:bg-snow dark:text-night border-transparent'
+                  : 'border-ink/15 dark:border-snow/20 opacity-70 hover:opacity-100'
+              }`}
+            >
+              {CATEGORY_LABELS[c]}
+            </button>
+          ))}
         </div>
-        {filtersOpen && (
-          <div className="flex gap-2 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-none">
-            {CHIP_ORDER.map((c) => (
-              <button
-                key={c}
-                onClick={() => {
-                  setCategory(c);
-                  setFiltersOpen(false);
-                }}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors ${
-                  category === c
-                    ? 'bg-ink text-paper dark:bg-snow dark:text-night border-transparent'
-                    : 'border-ink/15 dark:border-snow/20 opacity-70 hover:opacity-100'
-                }`}
-              >
-                {c === 'all' ? 'All topics' : CATEGORY_LABELS[c]}
-              </button>
-            ))}
-          </div>
-        )}
 
         {feed.isLoading && <SkeletonFeed />}
         {feed.isError && (
