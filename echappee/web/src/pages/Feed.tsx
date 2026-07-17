@@ -1,6 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import ActionSheet from '../components/ActionSheet';
 import BriefCard from '../components/BriefCard';
 import InfiniteScroll from '../components/InfiniteScroll';
@@ -75,28 +74,9 @@ function AutoSeen({
   return <div ref={ref}>{children}</div>;
 }
 
-/** A photo from one of the surrounding stories, to break up the text wall. */
-function PhotoBreak({ card }: { card: FeedCard }) {
-  const a = card.article;
-  return (
-    <Link to={`/article/${a.id}`} className="block my-4 group">
-      <img
-        src={a.imageUrl!}
-        alt=""
-        loading="lazy"
-        className="w-full aspect-[16/9] rounded-2xl object-cover"
-      />
-      <span className="mt-1.5 block text-xs opacity-60 line-clamp-1 group-hover:opacity-90">
-        {a.title} · {a.sourceName}
-      </span>
-    </Link>
-  );
-}
-
 export default function Feed() {
   const [category, setCategory] = useState<Category | 'all'>('all');
   const [raceOnly, setRaceOnly] = useState(false);
-  const [raceBlockOpen, setRaceBlockOpen] = useState(false);
   // Captured once per mount: where the previous visit ended.
   const [newSince] = useState(trackVisit);
   const autoSeen = localStorage.getItem(AUTOSEEN_KEY) !== '0';
@@ -110,8 +90,7 @@ export default function Feed() {
     return () => clearInterval(iv);
   }, []);
 
-  // Today's race (if any) powers the leftmost filter chip and the race-day
-  // collapse block.
+  // Today's race (if any) powers the leftmost filter chip.
   const raceToday = useQuery({
     queryKey: ['race-banner'],
     queryFn: api.raceBanner,
@@ -185,72 +164,31 @@ export default function Feed() {
       )
     : [];
 
-  // Race-day calm: while there's a race today, its live coverage folds into
-  // one expandable block anchored where the newest of those stories sits.
-  // The 🏁 filter is the "show me everything about the race" path, so no
-  // collapsing there; small trickles (1–2 stories) also stay inline.
-  const raceCards =
-    todayRaceId !== null && !raceOnly ? cards.filter((c) => c.raceId === todayRaceId) : [];
-  const collapseRace = raceCards.length >= 3;
-  const raceLabel =
-    [raceToday.data?.raceName, raceToday.data?.stageLabel].filter(Boolean).join(' · ') ||
-    "today's race";
-
-  const items: { card: FeedCard; raceBlock?: FeedCard[] }[] = [];
-  for (const card of cards) {
-    if (collapseRace && card.raceId === todayRaceId) {
-      // The newest race story carries the whole block; the rest fold in.
-      if (card === raceCards[0]) items.push({ card, raceBlock: raceCards });
-    } else {
-      items.push({ card });
-    }
-  }
-
-  // Assemble the brief stream: day dividers, the new-since-last-visit line,
-  // a pull-quote at most every other brief, and a photo break every 4 briefs
-  // (image borrowed from a nearby story, each used once).
+  // Assemble the brief stream: the new-since-last-visit line, day dividers,
+  // a pull-quote at most every other brief, and each story's own photo at
+  // most every third brief.
   const stream: React.ReactNode[] = [];
   let lastDay = '';
   let sinceQuote = 2;
-  let sincePhoto = 0;
-  const usedPhotos = new Set<number>();
-  const photoPool: FeedCard[] = [];
+  let sincePhoto = 2;
   let newSincePending = newSince !== null;
 
-  const renderCard = (card: FeedCard) => {
-    const hasQuote = [card.article, ...card.alternates].some((a) => a.quote);
-    const showQuote = hasQuote && sinceQuote >= 2;
-    sinceQuote = showQuote ? 0 : sinceQuote + 1;
-    return (
-      <div key={card.clusterId + '-' + card.article.id}>
-        <AutoSeen enabled={autoSeen} onSeen={() => handleAutoSeen(card)}>
-          <BriefCard
-            card={card}
-            onToggleRead={handleToggleRead}
-            onLongPress={setSheetCard}
-            showQuote={showQuote}
-          />
-        </AutoSeen>
-      </div>
-    );
-  };
-
-  items.forEach((item, i) => {
+  cards.forEach((card, i) => {
     // Divider by the same timestamp that positions the card (its newest
     // coverage), not the displayed article — those can differ by a day.
-    const time = item.card.latestPublishedAt ?? item.card.article.publishedAt;
+    const time = card.latestPublishedAt ?? card.article.publishedAt;
     if (newSincePending && newSince !== null && Date.parse(time) <= newSince) {
-      // The boundary between this visit's arrivals and everything older —
-      // only drawn when it falls inside the list (something new above it).
-      if (i > 0) {
-        stream.push(
-          <div key="new-since" className="flex items-center gap-3 py-2" role="separator">
-            <span className="h-px flex-1 bg-accent/40" />
-            <span className="text-xs font-semibold text-accent">New since your last visit</span>
-            <span className="h-px flex-1 bg-accent/40" />
-          </div>
-        );
-      }
+      // The boundary between this visit's arrivals and everything older. At
+      // the very top it says outright that nothing new came in.
+      stream.push(
+        <div key="new-since" className="flex items-center gap-3 py-2" role="separator">
+          <span className="h-px flex-1 bg-accent/40" />
+          <span className="text-xs font-semibold text-accent">
+            {i === 0 ? 'Nothing new since your last visit' : 'New since your last visit'}
+          </span>
+          <span className="h-px flex-1 bg-accent/40" />
+        </div>
+      );
       newSincePending = false;
     }
     const day = dayLabel(time);
@@ -266,53 +204,25 @@ export default function Feed() {
       lastDay = day;
     }
 
-    if (item.raceBlock) {
-      const newCount = item.raceBlock.filter((c) => !c.read).length;
-      stream.push(
-        <div
-          key={`race-block-${todayRaceId}`}
-          className="my-3 rounded-2xl border border-accent/25 bg-accent/5 dark:bg-accent/10"
-        >
-          <button
-            onClick={() => setRaceBlockOpen((v) => !v)}
-            aria-expanded={raceBlockOpen}
-            className="flex w-full items-center gap-2 px-4 py-3 text-sm"
-          >
-            <span aria-hidden>🏁</span>
-            <span className="min-w-0 truncate text-left font-semibold">
-              {item.raceBlock.length} stories about {raceLabel}
-            </span>
-            {!raceBlockOpen && newCount > 0 && (
-              <span className="shrink-0 rounded-full bg-accent px-2 py-px text-xs font-semibold text-white">
-                {newCount} new
-              </span>
-            )}
-            <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"
-              className={`ml-auto shrink-0 opacity-50 transition-transform ${raceBlockOpen ? 'rotate-180' : ''}`}
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          {raceBlockOpen && <div className="px-4 pb-1">{item.raceBlock.map(renderCard)}</div>}
-        </div>
-      );
-      return;
-    }
-
-    stream.push(renderCard(item.card));
-    photoPool.push(item.card);
-    sincePhoto += 1;
-    if (sincePhoto >= 4) {
-      const photoCard = photoPool
-        .slice(-4)
-        .find((c) => c.article.imageUrl && !usedPhotos.has(c.article.id));
-      if (photoCard) {
-        usedPhotos.add(photoCard.article.id);
-        stream.push(<PhotoBreak key={`photo-${photoCard.article.id}`} card={photoCard} />);
-      }
-      sincePhoto = 0;
-    }
+    const hasQuote = [card.article, ...card.alternates].some((a) => a.quote);
+    const showQuote = hasQuote && sinceQuote >= 2;
+    sinceQuote = showQuote ? 0 : sinceQuote + 1;
+    const hasPhoto = [card.article, ...card.alternates].some((a) => a.imageUrl);
+    const showPhoto = hasPhoto && sincePhoto >= 2;
+    sincePhoto = showPhoto ? 0 : sincePhoto + 1;
+    stream.push(
+      <div key={card.clusterId + '-' + card.article.id}>
+        <AutoSeen enabled={autoSeen} onSeen={() => handleAutoSeen(card)}>
+          <BriefCard
+            card={card}
+            onToggleRead={handleToggleRead}
+            onLongPress={setSheetCard}
+            showQuote={showQuote}
+            showPhoto={showPhoto}
+          />
+        </AutoSeen>
+      </div>
+    );
   });
 
   return (
