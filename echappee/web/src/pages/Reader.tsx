@@ -173,7 +173,7 @@ export default function Reader() {
                 }}
                 className="rounded-full border border-ink/15 dark:border-snow/20 px-4 py-2 opacity-70 hover:opacity-100"
               >
-                Keep unread
+                Keep as new
               </button>
             </div>
 
@@ -207,7 +207,7 @@ export default function Reader() {
                   to={`/article/${next.data.id}`}
                   className="flex-1 rounded-xl bg-accent text-white py-3 text-sm font-semibold text-center"
                 >
-                  Next unread →
+                  Next new →
                 </Link>
               )}
             </div>

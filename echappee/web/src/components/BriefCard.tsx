@@ -64,8 +64,16 @@ export default function BriefCard({
               +{card.alternates.length} {sourcesOpen ? '▴' : '▾'}
             </button>
           )}
+          {sources.some((s) => s.liked) && (
+            <svg
+              width="12" height="12" viewBox="0 0 24 24" fill="currentColor"
+              className="text-accent" aria-label="You liked this story"
+            >
+              <path d="M7 10v12H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3zm2 12V9.6L12 2a3.13 3.13 0 0 1 3 3.88L14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H9z" />
+            </svg>
+          )}
           <button
-            aria-label={card.read ? 'Mark as unread' : 'Mark as read'}
+            aria-label={card.read ? 'Mark as new' : 'Mark as seen'}
             onClick={() => onToggleRead(card)}
             className="ml-auto -m-2 p-2"
           >

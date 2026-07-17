@@ -132,6 +132,17 @@ export default function Feed() {
     },
   });
 
+  // Liking straight from the feed — briefs are the primary reading surface,
+  // so the taste signal must not require opening the article.
+  const likeStory = useMutation({
+    mutationFn: ({ articleId, liked }: { articleId: number; liked: boolean }) =>
+      liked ? api.like(articleId) : api.unlike(articleId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['feed'] });
+      void queryClient.invalidateQueries({ queryKey: ['sources'] });
+    },
+  });
+
   const handleToggleRead = (card: FeedCard) => {
     const read = !card.read;
     toggleRead.mutate({ clusterId: card.clusterId, read });
@@ -235,7 +246,7 @@ export default function Feed() {
                   showAll === all ? 'bg-ink text-paper dark:bg-snow dark:text-night' : 'opacity-60'
                 }`}
               >
-                {all ? 'All' : 'Unread'}
+                {all ? 'All' : 'New'}
               </button>
             ))}
           </div>
@@ -298,7 +309,7 @@ export default function Feed() {
             <p className="text-sm">
               {showAll
                 ? 'New articles arrive with the next scrape.'
-                : 'New articles arrive with the next scrape — or flip to "All" to revisit.'}
+                : 'New stories arrive with the next scrape — flip to "All" to look back.'}
             </p>
           </div>
         )}
@@ -321,7 +332,15 @@ export default function Feed() {
           sheetCard
             ? [
                 {
-                  label: sheetCard.read ? 'Mark as unread' : 'Mark as read',
+                  label: sheetCard.article.liked ? 'Remove thumbs-up' : '👍 Good read',
+                  onClick: () =>
+                    likeStory.mutate({
+                      articleId: sheetCard.article.id,
+                      liked: !sheetCard.article.liked,
+                    }),
+                },
+                {
+                  label: sheetCard.read ? 'Mark as new' : 'Mark as seen',
                   onClick: () => handleToggleRead(sheetCard),
                 },
                 ...sheetSources.map((a) => ({
@@ -336,7 +355,7 @@ export default function Feed() {
 
       {undo && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 rounded-full bg-ink text-paper dark:bg-snow dark:text-night pl-4 pr-2 py-2 text-sm shadow-lg">
-          <span className="max-w-[50vw] truncate">Marked as read</span>
+          <span className="max-w-[50vw] truncate">Seen</span>
           <button
             onClick={() => {
               if (undoTimer.current) clearTimeout(undoTimer.current);
