@@ -315,6 +315,18 @@ export async function ingestArticle(
     ]
   );
   const id = rows[0]?.id ?? 0;
+  if (id > 0) {
+    // Follow-up coverage joining a story the reader already triaged must not
+    // flip the card back to new — inherit the read state. Only read_at:
+    // seen_at is a per-article skip judgment the reader never made here.
+    await db.query(
+      `UPDATE articles SET read_at = $1
+       WHERE id = $2
+         AND EXISTS (SELECT 1 FROM articles WHERE cluster_id = $3 AND id != $2)
+         AND NOT EXISTS (SELECT 1 FROM articles WHERE cluster_id = $3 AND id != $2 AND read_at IS NULL)`,
+      [nowIso(), id, clusterId]
+    );
+  }
   if (id > 0 && riders !== null) await saveRiders(db, id, riders);
   if (id > 0 && race) await linkRace(db, id, race);
   return id;

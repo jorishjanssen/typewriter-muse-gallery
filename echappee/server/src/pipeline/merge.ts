@@ -54,7 +54,23 @@ export async function findMergeCandidates(
 
 /** Fold cluster `from` into cluster `into`; article-level read state survives. */
 export async function mergeClusters(db: Db, from: number, into: number): Promise<void> {
+  // If the surviving story was already fully triaged, the folded-in coverage
+  // inherits that — a merge must not resurrect a seen brief as new.
+  const target = (
+    await db.query<{ total: number; unread: number }>(
+      `SELECT COUNT(*)::int AS total,
+              SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END)::int AS unread
+       FROM articles WHERE cluster_id = $1`,
+      [into]
+    )
+  )[0];
   await db.query('UPDATE articles SET cluster_id = $1 WHERE cluster_id = $2', [into, from]);
+  if (target && target.total > 0 && Number(target.unread ?? 0) === 0) {
+    await db.query('UPDATE articles SET read_at = $1 WHERE cluster_id = $2 AND read_at IS NULL', [
+      nowIso(),
+      into,
+    ]);
+  }
   // A bookmark on either half survives the merge.
   await db.query(
     `UPDATE clusters SET bookmarked_at = COALESCE(bookmarked_at,
