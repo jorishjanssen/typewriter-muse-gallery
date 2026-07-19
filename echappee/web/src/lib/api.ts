@@ -32,8 +32,10 @@ export interface FeedCard {
   clusterBrief: string | null;
   /** Newest coverage in the cluster — drives feed position and day dividers. */
   latestPublishedAt: string;
-  /** Race this story belongs to, when linked — used to collapse race-day coverage. */
+  /** Race this story belongs to, when linked. */
   raceId: number | null;
+  /** Saved for later (story-level). */
+  bookmarked: boolean;
   read: boolean;
 }
 
@@ -46,6 +48,9 @@ export interface FullArticle extends ArticleCard {
   contentHtml: string | null;
   alternates: ArticleCard[];
   riders: RiderRef[];
+  clusterId: number;
+  /** The story (cluster) is saved for later. */
+  bookmarked: boolean;
 }
 
 export interface RiderRef {
@@ -191,6 +196,10 @@ export const api = {
     request<{ id: number | null }>(`/api/articles/${id}/next-unread`),
   markClusterRead: (id: number) => request(`/api/clusters/${id}/read`, { method: 'POST' }),
   markClusterUnread: (id: number) => request(`/api/clusters/${id}/unread`, { method: 'POST' }),
+  bookmark: (clusterId: number) => request(`/api/clusters/${clusterId}/bookmark`, { method: 'POST' }),
+  unbookmark: (clusterId: number) =>
+    request(`/api/clusters/${clusterId}/unbookmark`, { method: 'POST' }),
+  bookmarks: () => request<{ cards: FeedCard[] }>('/api/bookmarks'),
   readAll: () => request('/api/read-all', { method: 'POST' }),
   mutes: () => request<Mute[]>('/api/mutes'),
   addMute: (kind: Mute['kind'], value: string) =>

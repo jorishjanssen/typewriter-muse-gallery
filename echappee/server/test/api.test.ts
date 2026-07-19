@@ -349,6 +349,49 @@ describe('likes', () => {
   });
 });
 
+describe('bookmarks', () => {
+  it('saves a story, marks it triaged, lists it, and unsaves cleanly', async () => {
+    await db.query('UPDATE articles SET read_at = NULL, seen_at = NULL, opened_at = NULL', []);
+    await db.query('UPDATE clusters SET bookmarked_at = NULL', []);
+
+    const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const target = feed.cards.find((c) => c.alternates.length === 1);
+    expect(target.bookmarked).toBe(false);
+
+    await app.inject({ method: 'POST', url: `/api/clusters/${target.clusterId}/bookmark` });
+
+    // Saved = triaged: the whole story leaves the new count, skipped not opened.
+    const after = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    const saved = after.cards.find((c) => c.clusterId === target.clusterId);
+    expect(saved.bookmarked).toBe(true);
+    expect(saved.read).toBe(true);
+    const stamped = await db.query<{ seen_at: string | null }>(
+      'SELECT seen_at FROM articles WHERE cluster_id = $1',
+      [target.clusterId]
+    );
+    expect(stamped.every((r) => r.seen_at !== null)).toBe(true);
+
+    // The saved list carries the same card shape, newest bookmark first.
+    const list = (await app.inject({ method: 'GET', url: '/api/bookmarks' })).json() as { cards: any[] };
+    expect(list.cards.map((c: any) => c.clusterId)).toEqual([target.clusterId]);
+    expect(list.cards[0].alternates.length).toBe(1);
+
+    // The reader exposes the story's bookmark so its button can reflect it.
+    const article = (await app.inject({ method: 'GET', url: `/api/articles/${target.article.id}` })).json() as any;
+    expect(article.bookmarked).toBe(true);
+    expect(article.clusterId).toBe(target.clusterId);
+
+    // Unsave: gone from the list, seen state untouched.
+    await app.inject({ method: 'POST', url: `/api/clusters/${target.clusterId}/unbookmark` });
+    const empty = (await app.inject({ method: 'GET', url: '/api/bookmarks' })).json() as { cards: any[] };
+    expect(empty.cards).toEqual([]);
+    const stillSeen = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };
+    expect(stillSeen.cards.find((c) => c.clusterId === target.clusterId).read).toBe(true);
+
+    await db.query('UPDATE articles SET read_at = NULL, seen_at = NULL', []);
+  });
+});
+
 describe('cluster brief in feed', () => {
   it('exposes the merged brief on multi-source cards only', async () => {
     const feed = (await app.inject({ method: 'GET', url: '/api/feed' })).json() as { cards: any[] };

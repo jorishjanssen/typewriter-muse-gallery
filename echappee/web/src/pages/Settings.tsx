@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, timeAgo, type LlmTask, type Mute } from '../lib/api';
 
-const AUTOSEEN_KEY = 'echappee-autoseen';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -10,7 +9,6 @@ export default function Settings() {
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.sources });
   const mutes = useQuery({ queryKey: ['mutes'], queryFn: api.mutes });
   const [term, setTerm] = useState('');
-  const [autoSeen, setAutoSeen] = useState(() => localStorage.getItem(AUTOSEEN_KEY) !== '0');
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['mutes'] });
@@ -50,24 +48,9 @@ export default function Settings() {
               {status.data.unread} new of {status.data.articles} stories.
             </p>
           )}
-          <label className="mt-4 flex items-start gap-2.5 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoSeen}
-              onChange={(e) => {
-                setAutoSeen(e.target.checked);
-                localStorage.setItem(AUTOSEEN_KEY, e.target.checked ? '1' : '0');
-              }}
-              className="mt-0.5 h-4 w-4 accent-[#e04f1f]"
-            />
-            <span>
-              <span className="font-medium">Scrolling past a story marks it as seen</span>
-              <span className="block opacity-60">
-                The accent dot fades once a story has scrolled past. Skips are tracked
-                per source so you can see which sources you actually read.
-              </span>
-            </span>
-          </label>
+          <p className="mt-3 text-sm opacity-60">
+            Scrolling past a story marks it as seen; swiping a story saves it for later.
+          </p>
         </section>
 
         <section>

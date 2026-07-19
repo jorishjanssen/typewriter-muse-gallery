@@ -6,12 +6,11 @@ import InfiniteScroll from '../components/InfiniteScroll';
 import PullToRefresh from '../components/PullToRefresh';
 import { SkeletonFeed } from '../components/Skeleton';
 import { api, CATEGORY_LABELS, type Category, type FeedCard } from '../lib/api';
+import { useToggleBookmark } from '../lib/useToggleBookmark';
 import { useToggleRead } from '../lib/useToggleRead';
 
 // The only two topics worth a dedicated chip; tapping the active one clears it.
 const FILTER_CHIPS: Category[] = ['racing', 'gear'];
-// Scroll-past-marks-seen. On unless explicitly disabled.
-const AUTOSEEN_KEY = 'echappee-autoseen';
 // "New since your last visit" line. A visit ends after 30 minutes of
 // inactivity; the marker then remembers where the previous visit left off.
 const LAST_SEEN_KEY = 'echappee-last-seen-at';
@@ -79,7 +78,6 @@ export default function Feed() {
   const [raceOnly, setRaceOnly] = useState(false);
   // Captured once per mount: where the previous visit ended.
   const [newSince] = useState(trackVisit);
-  const autoSeen = localStorage.getItem(AUTOSEEN_KEY) !== '0';
   const [sheetCard, setSheetCard] = useState<FeedCard | null>(null);
   const queryClient = useQueryClient();
 
@@ -114,6 +112,7 @@ export default function Feed() {
   });
 
   const toggleRead = useToggleRead();
+  const toggleBookmark = useToggleBookmark();
 
   const muteSource = useMutation({
     mutationFn: (sourceKey: string) => api.addMute('source', sourceKey),
@@ -143,6 +142,10 @@ export default function Feed() {
 
   const handleAutoSeen = (card: FeedCard) => {
     if (!card.read) toggleRead.mutate({ clusterId: card.clusterId, read: true });
+  };
+
+  const handleToggleBookmark = (card: FeedCard) => {
+    toggleBookmark.mutate({ clusterId: card.clusterId, bookmarked: !card.bookmarked });
   };
 
   const cards = feed.data?.pages.flatMap((p) => p.cards) ?? [];
@@ -212,10 +215,11 @@ export default function Feed() {
     sincePhoto = showPhoto ? 0 : sincePhoto + 1;
     stream.push(
       <div key={card.clusterId + '-' + card.article.id}>
-        <AutoSeen enabled={autoSeen} onSeen={() => handleAutoSeen(card)}>
+        <AutoSeen enabled onSeen={() => handleAutoSeen(card)}>
           <BriefCard
             card={card}
             onToggleRead={handleToggleRead}
+            onToggleBookmark={handleToggleBookmark}
             onLongPress={setSheetCard}
             showQuote={showQuote}
             showPhoto={showPhoto}
@@ -287,6 +291,10 @@ export default function Feed() {
         actions={
           sheetCard
             ? [
+                {
+                  label: sheetCard.bookmarked ? 'Remove from saved' : '🔖 Save for later',
+                  onClick: () => handleToggleBookmark(sheetCard),
+                },
                 {
                   label: sheetCard.article.liked ? 'Remove thumbs-up' : '👍 Good read',
                   onClick: () =>

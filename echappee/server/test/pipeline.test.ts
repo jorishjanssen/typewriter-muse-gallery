@@ -209,11 +209,19 @@ describe('cluster merge pass', () => {
     const { mergeDuplicateClusters } = await import('../src/pipeline/merge.js');
     const db = await createMemoryDb();
     const { c1, c2 } = await seedTwoClusters(db);
+    // A bookmark on the cluster that gets folded away must survive the merge.
+    await db.query('UPDATE clusters SET bookmarked_at = $1 WHERE id = $2', [
+      new Date().toISOString(), c2,
+    ]);
 
     expect(await mergeDuplicateClusters(db, { judge: async () => true })).toBe(1);
     const rows = await db.query<{ cluster_id: number }>('SELECT cluster_id FROM articles');
     expect(rows.map((r) => r.cluster_id)).toEqual([c1, c1]);
     expect(await db.query('SELECT 1 FROM clusters WHERE id = $1', [c2])).toHaveLength(0);
+    const kept = await db.query<{ bookmarked_at: string | null }>(
+      'SELECT bookmarked_at FROM clusters WHERE id = $1', [c1]
+    );
+    expect(kept[0].bookmarked_at).not.toBeNull();
     await db.close();
   });
 

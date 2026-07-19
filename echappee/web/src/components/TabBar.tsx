@@ -5,8 +5,8 @@ import { api } from '../lib/api';
 
 const TABS = [
   { to: '/', label: 'Feed', match: (p: string) => p === '/' || p.startsWith('/article'), icon: <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z" /> },
-  { to: '/races', label: 'Races', match: (p: string) => p.startsWith('/race'), icon: <><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></> },
-  { to: '/riders', label: 'Riders', match: (p: string) => p.startsWith('/rider'), icon: <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></> },
+  { to: '/races', label: 'Peloton', match: (p: string) => p.startsWith('/race') || p.startsWith('/rider'), icon: <><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></> },
+  { to: '/saved', label: 'Saved', match: (p: string) => p.startsWith('/saved'), icon: <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /> },
   { to: '/settings', label: 'Settings', match: (p: string) => p.startsWith('/settings'), icon: <><circle cx="12" cy="12" r="3" /><path d="M12 1v4m0 14v4M4.2 4.2l2.8 2.8m10 10 2.8 2.8M1 12h4m14 0h4M4.2 19.8l2.8-2.8m10-10 2.8-2.8" /></> },
 ];
 
