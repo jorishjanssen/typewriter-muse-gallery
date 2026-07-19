@@ -222,6 +222,27 @@ describe('cluster merge pass', () => {
       'SELECT bookmarked_at FROM clusters WHERE id = $1', [c1]
     );
     expect(kept[0].bookmarked_at).not.toBeNull();
+    // Neither half was read, so the merged story must still be new.
+    const reads = await db.query<{ read_at: string | null }>('SELECT read_at FROM articles');
+    expect(reads.every((r) => r.read_at === null)).toBe(true);
+    await db.close();
+  });
+
+  it('a merge into a fully seen story keeps the card seen', async () => {
+    const { mergeDuplicateClusters } = await import('../src/pipeline/merge.js');
+    const db = await createMemoryDb();
+    const { c1, c2 } = await seedTwoClusters(db);
+    // The reader triaged the older story; the newer duplicate never surfaced.
+    await db.query('UPDATE articles SET read_at = $1 WHERE cluster_id = $2', [
+      new Date().toISOString(), c1,
+    ]);
+    expect(await mergeDuplicateClusters(db, { judge: async () => true })).toBe(1);
+    const rows = await db.query<{ read_at: string | null }>(
+      'SELECT read_at FROM articles WHERE cluster_id = $1', [c1]
+    );
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.every((r) => r.read_at !== null)).toBe(true);
+    expect(await db.query('SELECT 1 FROM clusters WHERE id = $1', [c2])).toHaveLength(0);
     await db.close();
   });
 
@@ -450,6 +471,48 @@ describe('ingestArticle', () => {
     expect(rows[2].cluster_id).not.toBe(rows[0].cluster_id);
     expect(rows[0].category).toBe('racing');
     expect(rows[2].category).toBe('gear');
+    await db.close();
+  });
+
+  it('follow-up coverage of a fully seen story inherits the read state', async () => {
+    const db = await createMemoryDb();
+    const cyclingnews = getSource('cyclingnews')!;
+    const wielerflits = getSource('wielerflits')!;
+    const sporza = getSource('sporza')!;
+    const extracted = { contentHtml: '<p>body</p>', contentText: 'body', imageUrl: null, author: null };
+    const base = { author: null, publishedAt: new Date().toISOString(), excerpt: null, imageUrl: null };
+
+    const first = await ingestArticle(db, cyclingnews, {
+      ...base, guid: 'f1', url: 'https://example.com/f1',
+      title: 'Vingegaard takes yellow with summit finish masterclass in the Alps',
+    }, extracted);
+    // The reader triages the story...
+    await db.query('UPDATE articles SET read_at = $1, seen_at = $1 WHERE id = $2', [
+      new Date().toISOString(), first,
+    ]);
+    // ...then a second source covers the same story: it must arrive read.
+    const second = await ingestArticle(db, wielerflits, {
+      ...base, guid: 'f2', url: 'https://example.com/f2',
+      title: 'Vingegaard pakt geel met masterclass op summit finish in de Alpen',
+    }, extracted);
+    const rows = await db.query<{ id: number; cluster_id: number; read_at: string | null; seen_at: string | null }>(
+      'SELECT id, cluster_id, read_at, seen_at FROM articles ORDER BY id'
+    );
+    expect(rows[0].cluster_id).toBe(rows[1].cluster_id);
+    expect(rows.find((r) => r.id === second)!.read_at).not.toBeNull();
+    // Not a skip judgment — the reader never saw this specific article.
+    expect(rows.find((r) => r.id === second)!.seen_at).toBeNull();
+
+    // But a story with unread coverage keeps new arrivals new.
+    await db.query('UPDATE articles SET read_at = NULL WHERE id = $1', [first]);
+    const third = await ingestArticle(db, sporza, {
+      ...base, guid: 'f3', url: 'https://example.com/f3',
+      title: 'Vingegaard verovert geel na masterclass op de summit finish (Alpen)',
+    }, extracted);
+    const after = await db.query<{ id: number; read_at: string | null }>(
+      'SELECT id, read_at FROM articles WHERE id = $1', [third]
+    );
+    expect(after[0].read_at).toBeNull();
     await db.close();
   });
 
