@@ -55,6 +55,13 @@ export async function findMergeCandidates(
 /** Fold cluster `from` into cluster `into`; article-level read state survives. */
 export async function mergeClusters(db: Db, from: number, into: number): Promise<void> {
   await db.query('UPDATE articles SET cluster_id = $1 WHERE cluster_id = $2', [into, from]);
+  // A bookmark on either half survives the merge.
+  await db.query(
+    `UPDATE clusters SET bookmarked_at = COALESCE(bookmarked_at,
+       (SELECT bookmarked_at FROM clusters WHERE id = $2))
+     WHERE id = $1`,
+    [into, from]
+  );
   // merge_reviews rows for the dead cluster cascade away with it.
   await db.query('DELETE FROM clusters WHERE id = $1', [from]);
   await touchCluster(db, into);

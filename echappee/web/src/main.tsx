@@ -8,10 +8,10 @@ import './index.css';
 import TabBar from './components/TabBar';
 import Feed from './pages/Feed';
 import Reader from './pages/Reader';
+import Peloton from './pages/Peloton';
 import RaceStage from './pages/RaceStage';
-import Races from './pages/Races';
 import RiderFeed from './pages/RiderFeed';
-import Riders from './pages/Riders';
+import Saved from './pages/Saved';
 import Settings from './pages/Settings';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -40,16 +40,17 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       // Bump the buster whenever a cached API shape changes incompatibly —
       // stale persisted data otherwise crashes new UI code (e.g. the watch
       // guide redesign reading .options from an old-shape guide).
-      persistOptions={{ persister, maxAge: DAY, buster: 'v2' }}
+      persistOptions={{ persister, maxAge: DAY, buster: 'v3' }}
     >
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Feed />} />
           <Route path="/article/:id" element={<Reader />} />
-          <Route path="/races" element={<Races />} />
+          <Route path="/races" element={<Peloton />} />
           <Route path="/race/:id" element={<RaceStage />} />
-          <Route path="/riders" element={<Riders />} />
+          <Route path="/riders" element={<Peloton initial="riders" />} />
           <Route path="/rider/:key" element={<RiderFeed />} />
+          <Route path="/saved" element={<Saved />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
         <TabBar />

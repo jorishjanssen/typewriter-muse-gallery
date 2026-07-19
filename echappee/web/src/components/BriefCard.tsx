@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { timeAgo, type ArticleCard, type FeedCard } from '../lib/api';
 import { useLongPress } from '../lib/useLongPress';
-import SwipeToRead from './SwipeToRead';
+import SwipeToSave from './SwipeToSave';
 
 /**
  * The story's own photo. Small images blown up to full width look
@@ -37,12 +37,14 @@ function CardPhoto({ src, articleId }: { src: string; articleId: number }) {
 export default function BriefCard({
   card,
   onToggleRead,
+  onToggleBookmark,
   onLongPress,
   showQuote = false,
   showPhoto = false,
 }: {
   card: FeedCard;
   onToggleRead: (card: FeedCard) => void;
+  onToggleBookmark: (card: FeedCard) => void;
   onLongPress?: (card: FeedCard) => void;
   showQuote?: boolean;
   showPhoto?: boolean;
@@ -63,7 +65,7 @@ export default function BriefCard({
   const importance = Math.max(...sources.map((s) => s.importance));
 
   return (
-    <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>
+    <SwipeToSave bookmarked={card.bookmarked} onToggle={() => onToggleBookmark(card)}>
       <article
         {...(onLongPress ? longPress : {})}
         className="py-3.5 border-b border-ink/10 dark:border-snow/10"
@@ -93,6 +95,14 @@ export default function BriefCard({
             >
               +{card.alternates.length} {sourcesOpen ? '▴' : '▾'}
             </button>
+          )}
+          {card.bookmarked && (
+            <svg
+              width="12" height="12" viewBox="0 0 24 24" fill="currentColor"
+              className="text-accent" aria-label="Saved for later"
+            >
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
           )}
           {sources.some((s) => s.liked) && (
             <svg
@@ -150,6 +160,6 @@ export default function BriefCard({
           </ul>
         )}
       </article>
-    </SwipeToRead>
+    </SwipeToSave>
   );
 }

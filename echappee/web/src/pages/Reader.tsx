@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import BackLink, { useGoBack } from '../components/BackLink';
 import { SkeletonArticle } from '../components/Skeleton';
 import { api, CATEGORY_LABELS, timeAgo, type FullArticle } from '../lib/api';
+import { useToggleBookmark } from '../lib/useToggleBookmark';
 
 export default function Reader() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +42,16 @@ export default function Reader() {
     if (article.data && !article.data.read) markRead.mutate(article.data.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [article.data?.id]);
+
+  const toggleBookmark = useToggleBookmark();
+  const saveStory = (article: FullArticle) => {
+    // Optimistic: the button flips immediately, the shared hook covers the
+    // feed and saved-list caches.
+    queryClient.setQueryData<FullArticle>(['article', id], (prev) =>
+      prev ? { ...prev, bookmarked: !article.bookmarked } : prev
+    );
+    toggleBookmark.mutate({ clusterId: article.clusterId, bookmarked: !article.bookmarked });
+  };
 
   const like = useMutation({
     mutationFn: ({ articleId, liked }: { articleId: number; liked: boolean }) =>
@@ -156,6 +167,24 @@ export default function Reader() {
                   <path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
                 </svg>
                 {a.liked ? 'Liked!' : 'Good read'}
+              </button>
+              <button
+                onClick={() => saveStory(a)}
+                aria-pressed={a.bookmarked}
+                className={`flex items-center gap-1.5 rounded-full px-4 py-2 font-semibold transition-colors ${
+                  a.bookmarked
+                    ? 'bg-accent text-white'
+                    : 'border border-ink/15 dark:border-snow/20 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <svg
+                  width="16" height="16" viewBox="0 0 24 24"
+                  fill={a.bookmarked ? 'currentColor' : 'none'}
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
+                {a.bookmarked ? 'Saved' : 'Save'}
               </button>
               <a
                 href={a.url}

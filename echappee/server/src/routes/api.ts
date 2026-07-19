@@ -140,16 +140,20 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       else clusters.set(row.cluster_id, [row]);
     }
 
-    // Merged multi-source briefs for the clusters on this page.
+    // Merged multi-source briefs + bookmark state for the clusters on this page.
     const clusterIds = [...clusters.keys()];
     const clusterBriefs = new Map<number, string>();
+    const bookmarked = new Set<number>();
     if (clusterIds.length > 0) {
-      const briefRows = await db.query<{ id: number; brief: string | null }>(
-        `SELECT id, brief FROM clusters
-         WHERE brief IS NOT NULL AND id IN (${clusterIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      const metaRows = await db.query<{ id: number; brief: string | null; bookmarked_at: string | null }>(
+        `SELECT id, brief, bookmarked_at FROM clusters
+         WHERE id IN (${clusterIds.map((_, i) => `$${i + 1}`).join(',')})`,
         clusterIds
       );
-      for (const r of briefRows) if (r.brief) clusterBriefs.set(r.id, r.brief);
+      for (const r of metaRows) {
+        if (r.brief) clusterBriefs.set(r.id, r.brief);
+        if (r.bookmarked_at) bookmarked.add(r.id);
+      }
     }
 
     const cards = [];
@@ -174,9 +178,9 @@ export function registerApi(app: FastifyInstance, db: Db): void {
         // same timestamp or a story with an older "best" article flips the
         // Today/Yesterday labels around itself.
         latestPublishedAt: group[0].published_at,
-        // The race this story belongs to (any linked article in the cluster)
-        // — lets the feed collapse today's-race coverage into one block.
+        // The race this story belongs to (any linked article in the cluster).
         raceId: group.find((r) => r.race_id !== null)?.race_id ?? null,
+        bookmarked: bookmarked.has(best.cluster_id),
         read: group.every((r) => r.read_at !== null),
       });
       lastPublished = group[group.length - 1].published_at;
@@ -206,11 +210,19 @@ export function registerApi(app: FastifyInstance, db: Db): void {
       'SELECT rider_key AS key, rider_name AS name FROM article_riders WHERE article_id = $1',
       [row.id]
     );
+    const cluster = (
+      await db.query<{ bookmarked_at: string | null }>(
+        'SELECT bookmarked_at FROM clusters WHERE id = $1',
+        [row.cluster_id]
+      )
+    )[0];
     return {
       ...articleCard(row),
       contentHtml: row.content_html,
       alternates: siblings.map(articleCard),
       riders,
+      clusterId: row.cluster_id,
+      bookmarked: cluster?.bookmarked_at != null,
     };
   });
 
@@ -419,6 +431,77 @@ export function registerApi(app: FastifyInstance, db: Db): void {
   app.post('/api/read-all', async () => {
     await db.query('UPDATE articles SET read_at = $1 WHERE read_at IS NULL', [nowIso()]);
     return { ok: true };
+  });
+
+  // ---- Bookmarks (story-level, read-later) ----------------------------------
+  // Saving a story also triages it: it stops counting as new because it now
+  // lives in Saved — same stamping as the cluster read path.
+  app.post<{ Params: { id: string } }>('/api/clusters/:id/bookmark', async (req) => {
+    const now = nowIso();
+    const id = Number(req.params.id);
+    await db.query(
+      'UPDATE clusters SET bookmarked_at = COALESCE(bookmarked_at, $1) WHERE id = $2',
+      [now, id]
+    );
+    await db.query(
+      `UPDATE articles SET read_at = COALESCE(read_at, $1),
+         seen_at = CASE WHEN opened_at IS NULL THEN COALESCE(seen_at, $1) ELSE seen_at END
+       WHERE cluster_id = $2`,
+      [now, id]
+    );
+    return { ok: true };
+  });
+
+  // Removing the bookmark leaves the seen state alone — the story was
+  // still triaged, it just no longer needs keeping.
+  app.post<{ Params: { id: string } }>('/api/clusters/:id/unbookmark', async (req) => {
+    await db.query('UPDATE clusters SET bookmarked_at = NULL WHERE id = $1', [
+      Number(req.params.id),
+    ]);
+    return { ok: true };
+  });
+
+  // Saved stories, most recently saved first — same card shape as the feed.
+  // No mutes here: a bookmark is explicit intent.
+  app.get('/api/bookmarks', async () => {
+    const marks = await db.query<{ id: number; brief: string | null; bookmarked_at: string }>(
+      'SELECT id, brief, bookmarked_at FROM clusters WHERE bookmarked_at IS NOT NULL ORDER BY bookmarked_at DESC LIMIT 200'
+    );
+    if (marks.length === 0) return { cards: [] };
+    const rows = await db.query<ArticleRow>(
+      `SELECT ${ARTICLE_COLS} FROM articles
+       WHERE cluster_id IN (${marks.map((_, i) => `$${i + 1}`).join(',')})
+       ORDER BY published_at DESC`,
+      marks.map((m) => m.id)
+    );
+    const byCluster = new Map<number, ArticleRow[]>();
+    for (const row of rows) {
+      const group = byCluster.get(row.cluster_id);
+      if (group) group.push(row);
+      else byCluster.set(row.cluster_id, [row]);
+    }
+    const cards = marks
+      .filter((m) => byCluster.has(m.id))
+      .map((m) => {
+        const group = byCluster.get(m.id)!;
+        const best = [...group].sort((a, b) => {
+          const lenA = a.content_len ?? 0;
+          const lenB = b.content_len ?? 0;
+          return lenB - lenA || b.published_at.localeCompare(a.published_at);
+        })[0];
+        return {
+          clusterId: m.id,
+          article: articleCard(best),
+          alternates: group.filter((r) => r.id !== best.id).map(articleCard),
+          clusterBrief: group.length > 1 ? m.brief : null,
+          latestPublishedAt: group[0].published_at,
+          raceId: group.find((r) => r.race_id !== null)?.race_id ?? null,
+          bookmarked: true,
+          bookmarkedAt: m.bookmarked_at,
+          read: group.every((r) => r.read_at !== null),
+        };
+      });
+    return { cards };
   });
 
   // ---- Mutes ----------------------------------------------------------------

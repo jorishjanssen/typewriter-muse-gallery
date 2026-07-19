@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CATEGORY_LABELS, timeAgo, type FeedCard } from '../lib/api';
 import { useLongPress } from '../lib/useLongPress';
-import SwipeToRead from './SwipeToRead';
+import { useToggleBookmark } from '../lib/useToggleBookmark';
+import SwipeToSave from './SwipeToSave';
 
 const CATEGORY_COLORS: Record<string, string> = {
   racing: 'text-accent',
@@ -25,9 +26,15 @@ export default function StoryCard({
   const grouped = card.alternates.length > 0;
   const [expanded, setExpanded] = useState(false);
   const longPress = useLongPress(() => onLongPress?.(card));
+  const toggleBookmark = useToggleBookmark();
 
   return (
-    <SwipeToRead read={card.read} onToggle={() => onToggleRead(card)}>
+    <SwipeToSave
+      bookmarked={card.bookmarked}
+      onToggle={() =>
+        toggleBookmark.mutate({ clusterId: card.clusterId, bookmarked: !card.bookmarked })
+      }
+    >
       <article
         {...(onLongPress ? longPress : {})}
         className={
@@ -132,6 +139,6 @@ export default function StoryCard({
           </>
         )}
       </article>
-    </SwipeToRead>
+    </SwipeToSave>
   );
 }

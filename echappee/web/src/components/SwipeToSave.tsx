@@ -4,7 +4,8 @@ const TRIGGER_PX = 72;
 const ACCENT = '#e04f1f';
 
 /**
- * Horizontal swipe on a feed card toggles its read state.
+ * Horizontal swipe on a feed card toggles its bookmark (save for later).
+ * The card snaps back in place afterwards — saving never removes it.
  *
  * Built for smoothness: the gesture lives entirely in refs and paints via
  * requestAnimationFrame by mutating `transform` directly — zero React
@@ -13,12 +14,12 @@ const ACCENT = '#e04f1f';
  * the trigger point is damped for a tactile "caught" feel, with a small
  * haptic tick where supported.
  */
-export default function SwipeToRead({
-  read,
+export default function SwipeToSave({
+  bookmarked,
   onToggle,
   children,
 }: {
-  read: boolean;
+  bookmarked: boolean;
   onToggle: () => void;
   children: React.ReactNode;
 }) {
@@ -31,7 +32,6 @@ export default function SwipeToRead({
     active: false,
     decided: false,
     engaged: false,
-    leaving: false,
     raf: 0,
   });
   const suppressClick = useRef(false);
@@ -74,7 +74,6 @@ export default function SwipeToRead({
 
   function onTouchStart(e: React.TouchEvent) {
     const s = g.current;
-    if (s.leaving) return;
     s.startX = e.touches[0].clientX;
     s.startY = e.touches[0].clientY;
     s.dx = 0;
@@ -85,7 +84,7 @@ export default function SwipeToRead({
 
   function onTouchMove(e: React.TouchEvent) {
     const s = g.current;
-    if (!s.active || s.leaving) return;
+    if (!s.active) return;
     const dx = e.touches[0].clientX - s.startX;
     const dy = e.touches[0].clientY - s.startY;
     if (!s.decided) {
@@ -101,43 +100,15 @@ export default function SwipeToRead({
 
   function onTouchEnd() {
     const s = g.current;
-    if (!s.active || s.leaving) return;
+    if (!s.active) return;
     s.active = false;
     if (!s.decided) return;
     suppressClick.current = true;
     setTimeout(() => (suppressClick.current = false), 350);
 
-    if (Math.abs(s.dx) >= TRIGGER_PX) {
-      s.leaving = true;
-      const content = contentRef.current;
-      if (content) {
-        content.style.transition = 'transform 190ms ease-in, opacity 190ms ease-in';
-        content.style.transform = `translate3d(${Math.sign(s.dx) * window.innerWidth}px,0,0)`;
-        content.style.opacity = '0';
-      }
-      setTimeout(() => {
-        onToggle();
-        // If the card stays mounted (show-read view), reset it in place.
-        requestAnimationFrame(() => {
-          const c = contentRef.current;
-          const r = revealRef.current;
-          if (c) {
-            c.style.transition = 'none';
-            c.style.transform = 'translate3d(0,0,0)';
-            c.style.opacity = '1';
-          }
-          if (r) {
-            r.style.opacity = '0';
-            r.style.color = '';
-          }
-          g.current.leaving = false;
-          g.current.dx = 0;
-        });
-      }, 180);
-    } else {
-      s.dx = 0;
-      settleBack();
-    }
+    if (Math.abs(s.dx) >= TRIGGER_PX) onToggle();
+    s.dx = 0;
+    settleBack();
   }
 
   return (
@@ -148,7 +119,7 @@ export default function SwipeToRead({
         style={{ opacity: 0 }}
         aria-hidden
       >
-        {read ? '↺ Unread' : '✓ Read'}
+        {bookmarked ? '✕ Unsave' : '🔖 Save'}
       </div>
       <div
         ref={contentRef}
